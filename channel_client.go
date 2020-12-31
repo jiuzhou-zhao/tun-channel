@@ -120,4 +120,10 @@ func (cli *ChannelClient) ReadPackageChan() <-chan []byte {
 func (cli *ChannelClient) StopAndWait() {
 	cli.ctxCancel()
 	cli.udpCli.StopAndWait()
+	cli.wg.Wait()
+}
+
+func (cli *ChannelClient) Wait() {
+	cli.udpCli.Wait()
+	cli.wg.Wait()
 }
