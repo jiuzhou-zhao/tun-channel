@@ -120,7 +120,7 @@ func (srv *ChannelServer) reader() {
 				srv.keyAddressMap[key] = *udpPackage.Addr
 				srv.addressKeyMap[udpPackage.Addr.String()] = key
 			case proto.MethodData:
-				key, d, err := srv.keyParser.ParseData(udpPackage.Package)
+				key, d, err := srv.keyParser.ParseData(d)
 				if err != nil {
 					srv.logger.Errorf("key parser parse key failed: %v", err)
 					continue
