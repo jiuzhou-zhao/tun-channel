@@ -127,7 +127,7 @@ func (srv *ChannelServer) reader() {
 				}
 				if addr, ok := srv.keyAddressMap[key]; ok {
 					srv.writeChannel <- &pkg.UDPPackage{
-						Package: d,
+						Package: proto.BuildData(d),
 						Addr:    &addr,
 					}
 				} else {
