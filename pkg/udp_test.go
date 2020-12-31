@@ -21,7 +21,7 @@ func TestUDPServer(t *testing.T) {
 	go func() {
 		defer wg.Done()
 
-		svr, err := NewUDPServer(ctx, svrAddress, 0, nil)
+		svr, err := NewUDPServer(ctx, svrAddress, 0, nil, nil)
 		assert.Nil(t, err)
 		assert.NotNil(t, svr)
 
@@ -56,7 +56,7 @@ func TestUDPServer(t *testing.T) {
 
 		time.Sleep(time.Second)
 
-		cli, err := NewUDPClient(ctx, svrAddress, 0, nil)
+		cli, err := NewUDPClient(ctx, svrAddress, 0, nil, nil)
 		assert.Nil(t, err)
 		assert.NotNil(t, cli)
 

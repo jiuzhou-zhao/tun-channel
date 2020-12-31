@@ -24,7 +24,7 @@ type ChannelClient struct {
 	lastTouchTime time.Time
 }
 
-func NewChannelClient(ctx context.Context, svrAddress string, vip string, logger pkg.Logger) (*ChannelClient, error) {
+func NewChannelClient(ctx context.Context, svrAddress string, vip string, logger pkg.Logger, crypt pkg.EnDecrypt) (*ChannelClient, error) {
 	if logger == nil {
 		logger = &pkg.ConsoleLogger{}
 	}
@@ -38,7 +38,7 @@ func NewChannelClient(ctx context.Context, svrAddress string, vip string, logger
 
 	chnClient.ctx, chnClient.ctxCancel = context.WithCancel(ctx)
 
-	udpCli, err := pkg.NewUDPClient(chnClient.ctx, svrAddress, 0, logger)
+	udpCli, err := pkg.NewUDPClient(chnClient.ctx, svrAddress, 0, logger, crypt)
 	if err != nil {
 		logger.Errorf("new udp client failed: %v", err)
 		return nil, err

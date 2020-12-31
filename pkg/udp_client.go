@@ -12,13 +12,15 @@ type UDPClient struct {
 
 	wg        sync.WaitGroup
 	logger    Logger
+	crypt     EnDecrypt
 	conn      net.Conn
 	frameSize uint16
 	ChRead    chan []byte
 	ChWrite   chan []byte
 }
 
-func NewUDPClient(ctx context.Context, addr string, frameSize uint16, logger Logger) (t *UDPClient, err error) {
+func NewUDPClient(ctx context.Context, addr string, frameSize uint16, logger Logger,
+	crypt EnDecrypt) (t *UDPClient, err error) {
 	if frameSize == 0 {
 		frameSize = 65507
 	}
@@ -27,8 +29,13 @@ func NewUDPClient(ctx context.Context, addr string, frameSize uint16, logger Log
 		logger = &DummyLogger{}
 	}
 
+	if crypt == nil {
+		crypt = &NonEnDecrypt{}
+	}
+
 	cli := &UDPClient{
 		logger:    logger,
+		crypt:     crypt,
 		frameSize: frameSize,
 		ChRead:    make(chan []byte, 10),
 		ChWrite:   make(chan []byte, 10),
@@ -63,7 +70,12 @@ func (cli *UDPClient) reader() {
 			cli.logger.Errorf("read failed: %v", e)
 			break
 		}
-		cli.ChRead <- buf[:n]
+		d, e := cli.crypt.Decrypt(buf[:n])
+		if e != nil {
+			cli.logger.Warnf("decrypt data failed: %v, %v", d, n)
+			continue
+		}
+		cli.ChRead <- d
 	}
 }
 
@@ -85,6 +97,7 @@ func (cli *UDPClient) writer() {
 		case <-cli.ctx.Done():
 			quit = true
 		case v = <-cli.ChWrite:
+			v = cli.crypt.Encrypt(v)
 			n, e := cli.conn.Write(v)
 			if e != nil || n != len(v) {
 				cli.logger.Errorf("write failed: %v, %v-%v", e, n, len(v))

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jiuzhou-zhao/udp-channel/pkg"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -33,7 +34,7 @@ func TestChannel(t *testing.T) {
 			log.Println("ut exit server routine")
 		}()
 
-		svr, err := NewChannelServer(ctx, serverAddr, nil, &TestLocalKeyParser{})
+		svr, err := NewChannelServer(ctx, serverAddr, nil, &TestLocalKeyParser{}, pkg.NewAESEnDecrypt("12"))
 		assert.Nil(t, err)
 		svr.Wait()
 	}()
@@ -45,7 +46,7 @@ func TestChannel(t *testing.T) {
 			log.Println("ut exit client routine")
 		}()
 
-		cli, err := NewChannelClient(ctx, serverAddr, "129.1.1.10", nil)
+		cli, err := NewChannelClient(ctx, serverAddr, "129.1.1.10", nil, pkg.NewAESEnDecrypt("12"))
 		assert.Nil(t, err)
 
 		go func() {

@@ -34,7 +34,7 @@ type ChannelServer struct {
 	removeChannel chan net.UDPAddr
 }
 
-func NewChannelServer(ctx context.Context, addr string, logger pkg.Logger, keyParser KeyParser) (*ChannelServer, error) {
+func NewChannelServer(ctx context.Context, addr string, logger pkg.Logger, keyParser KeyParser, crypt pkg.EnDecrypt) (*ChannelServer, error) {
 	if logger == nil {
 		logger = &pkg.ConsoleLogger{}
 	}
@@ -51,7 +51,7 @@ func NewChannelServer(ctx context.Context, addr string, logger pkg.Logger, keyPa
 	}
 	chnServer.ctx, chnServer.ctxCancel = context.WithCancel(ctx)
 
-	udpSrv, err := pkg.NewUDPServer(chnServer.ctx, addr, 0, logger)
+	udpSrv, err := pkg.NewUDPServer(chnServer.ctx, addr, 0, logger, crypt)
 	if err != nil {
 		logger.Errorf("new udp server failed: %v", err)
 		return nil, err

@@ -12,6 +12,7 @@ type UDPServer struct {
 
 	wg        sync.WaitGroup
 	logger    Logger
+	crypt     EnDecrypt
 	conn      *net.UDPConn
 	frameSize uint16
 	ChRead    chan *UDPPackage
@@ -23,7 +24,8 @@ type UDPPackage struct {
 	Addr    *net.UDPAddr
 }
 
-func NewUDPServer(ctx context.Context, addr string, frameSize uint16, logger Logger) (*UDPServer, error) {
+func NewUDPServer(ctx context.Context, addr string, frameSize uint16, logger Logger,
+	crypt EnDecrypt) (*UDPServer, error) {
 	if frameSize == 0 {
 		frameSize = 65507
 	}
@@ -32,8 +34,13 @@ func NewUDPServer(ctx context.Context, addr string, frameSize uint16, logger Log
 		logger = &DummyLogger{}
 	}
 
+	if crypt == nil {
+		crypt = &NonEnDecrypt{}
+	}
+
 	srv := &UDPServer{
 		logger:    logger,
+		crypt:     crypt,
 		frameSize: frameSize,
 		ChRead:    make(chan *UDPPackage, 10),
 		ChWrite:   make(chan *UDPPackage, 10),
@@ -78,7 +85,12 @@ func (svr *UDPServer) reader() {
 			svr.logger.Errorf("read from udp failed: %v", e)
 			break
 		}
-		pack.Package = pack.Package[:n]
+		d, e := svr.crypt.Decrypt(pack.Package[:n])
+		if e != nil {
+			svr.logger.Warnf("decrypt data failed: %v, %v", e, n)
+			continue
+		}
+		pack.Package = d
 		svr.ChRead <- pack
 	}
 }
@@ -102,7 +114,7 @@ func (svr *UDPServer) writer() {
 		case <-svr.ctx.Done():
 			quit = true
 		case v = <-svr.ChWrite:
-			_, e = svr.conn.WriteToUDP(v.Package, v.Addr)
+			_, e = svr.conn.WriteToUDP(svr.crypt.Encrypt(v.Package), v.Addr)
 			if e != nil {
 				svr.logger.Errorf("udp server write failed: %v", e)
 				break
