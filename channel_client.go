@@ -77,8 +77,10 @@ func (cli *ChannelClient) reader() {
 				cli.logger.Debug("receive ping message")
 				cli.udpCli.ChWrite <- proto.BuildPongMethodData(d)
 			case proto.MethodPong:
+				cli.logger.Debug("receive pong message")
 				cli.lastTouchTime = time.Now()
 			case proto.MethodKeyRequest:
+				cli.logger.Debug("receive key request message")
 				cli.udpCli.ChWrite <- proto.BuildKeyResponseData(cli.vip)
 			case proto.MethodKeyResponse:
 			case proto.MethodData:
