@@ -20,8 +20,10 @@ type ChannelServer struct {
 
 	wg sync.WaitGroup
 
-	logger    pkg.Logger
-	keyParser KeyParser
+	logger        pkg.Logger
+	keyParser     KeyParser
+	vpnVip        string
+	vpnVipAddress *net.UDPAddr
 
 	udpSrv *pkg.UDPServer
 
@@ -34,13 +36,15 @@ type ChannelServer struct {
 	removeChannel chan net.UDPAddr
 }
 
-func NewChannelServer(ctx context.Context, addr string, logger pkg.Logger, keyParser KeyParser, crypt pkg.EnDecrypt) (*ChannelServer, error) {
+func NewChannelServer(ctx context.Context, addr string, logger pkg.Logger, keyParser KeyParser,
+	crypt pkg.EnDecrypt, vpnVip string) (*ChannelServer, error) {
 	if logger == nil {
 		logger = &pkg.ConsoleLogger{}
 	}
 	chnServer := &ChannelServer{
 		logger:        logger,
 		keyParser:     keyParser,
+		vpnVip:        vpnVip,
 		livePool:      pkg.NewLivePool(context.Background(), 20*time.Second, 60*time.Second),
 		pendingKeyMap: make(map[string]interface{}),
 		addressKeyMap: make(map[string]string),
@@ -115,10 +119,16 @@ func (srv *ChannelServer) reader() {
 					}
 					delete(srv.keyAddressMap, key)
 					delete(srv.addressKeyMap, oldAddr.String())
+					if key == srv.vpnVip {
+						srv.vpnVipAddress = nil
+					}
 				}
 				delete(srv.pendingKeyMap, udpPackage.Addr.String())
 				srv.keyAddressMap[key] = *udpPackage.Addr
 				srv.addressKeyMap[udpPackage.Addr.String()] = key
+				if key == srv.vpnVip {
+					srv.vpnVipAddress = udpPackage.Addr
+				}
 			case proto.MethodData:
 				key, d, err := srv.keyParser.ParseData(d)
 				if err != nil {
@@ -129,6 +139,11 @@ func (srv *ChannelServer) reader() {
 					srv.writeChannel <- &pkg.UDPPackage{
 						Package: proto.BuildData(d),
 						Addr:    &addr,
+					}
+				} else if srv.vpnVipAddress != nil {
+					srv.writeChannel <- &pkg.UDPPackage{
+						Package: proto.BuildData(d),
+						Addr:    srv.vpnVipAddress,
 					}
 				} else {
 					srv.logger.Errorf("no key %v for data", key)

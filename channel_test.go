@@ -34,7 +34,7 @@ func TestChannel(t *testing.T) {
 			log.Println("ut exit server routine")
 		}()
 
-		svr, err := NewChannelServer(ctx, serverAddr, nil, &TestLocalKeyParser{}, pkg.NewAESEnDecrypt("12"))
+		svr, err := NewChannelServer(ctx, serverAddr, nil, &TestLocalKeyParser{}, pkg.NewAESEnDecrypt("12"), "")
 		assert.Nil(t, err)
 		svr.Wait()
 	}()
