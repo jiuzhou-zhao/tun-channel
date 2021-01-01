@@ -11,6 +11,8 @@ type Logger interface {
 	Warnf(format string, v ...interface{})
 	Error(v ...interface{})
 	Errorf(format string, v ...interface{})
+	Fatal(v ...interface{})
+	Fatalf(format string, v ...interface{})
 }
 
 type DummyLogger struct {
@@ -48,6 +50,14 @@ func (log *DummyLogger) Errorf(_ string, _ ...interface{}) {
 
 }
 
+func (log *DummyLogger) Fatal(v ...interface{}) {
+
+}
+
+func (log *DummyLogger) Fatalf(format string, v ...interface{}) {
+
+}
+
 type ConsoleLogger struct {
 }
 
@@ -81,4 +91,14 @@ func (log *ConsoleLogger) Error(v ...interface{}) {
 
 func (log *ConsoleLogger) Errorf(format string, v ...interface{}) {
 	fmt.Printf(format+"\n", v...)
+}
+
+func (log *ConsoleLogger) Fatal(v ...interface{}) {
+	log.Error(v...)
+	panic(1)
+}
+
+func (log *ConsoleLogger) Fatalf(format string, v ...interface{}) {
+	log.Errorf(format, v...)
+	panic(1)
 }
