@@ -224,7 +224,7 @@ type UDPConnectionLive struct {
 }
 
 func (live *UDPConnectionLive) Key() string {
-	return live.addr.IP.String()
+	return live.addr.String()
 }
 func (live *UDPConnectionLive) DoPingRequest() {
 	live.fnDoPingRequest()
