@@ -68,7 +68,7 @@ func (cli *UDPClient) reader() {
 		n, e := cli.conn.Read(buf)
 		if e != nil {
 			cli.logger.Errorf("read failed: %v", e)
-			break
+			continue
 		}
 		d, e := cli.crypt.Decrypt(buf[:n])
 		if e != nil {
@@ -101,7 +101,7 @@ func (cli *UDPClient) writer() {
 			n, e := cli.conn.Write(v)
 			if e != nil || n != len(v) {
 				cli.logger.Errorf("write failed: %v, %v-%v", e, n, len(v))
-				break
+				continue
 			}
 		}
 	}

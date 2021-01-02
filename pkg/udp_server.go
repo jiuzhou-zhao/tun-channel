@@ -83,7 +83,7 @@ func (svr *UDPServer) reader() {
 		n, pack.Addr, e = svr.conn.ReadFromUDP(pack.Package)
 		if e != nil {
 			svr.logger.Errorf("read from udp failed: %v", e)
-			break
+			continue
 		}
 		d, e := svr.crypt.Decrypt(pack.Package[:n])
 		if e != nil {
@@ -117,7 +117,7 @@ func (svr *UDPServer) writer() {
 			_, e = svr.conn.WriteToUDP(svr.crypt.Encrypt(v.Package), v.Addr)
 			if e != nil {
 				svr.logger.Errorf("udp server write failed: %v", e)
-				break
+				continue
 			}
 		}
 	}
