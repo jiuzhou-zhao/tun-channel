@@ -6,6 +6,7 @@ import (
 	"crypto/cipher"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 )
 
 type EnDecrypt interface {
@@ -57,18 +58,22 @@ func (edc *AESEnDecrypt) Encrypt(d []byte) []byte {
 	return cd
 }
 
-func (edc *AESEnDecrypt) Decrypt(d []byte) ([]byte, error) {
+func (edc *AESEnDecrypt) Decrypt(d []byte) (dd []byte, err error) {
+	defer func() {
+		errRecover := recover()
+		if errRecover != nil {
+			err = fmt.Errorf("panic: %v", errRecover)
+		}
+	}()
+
 	block, err := aes.NewCipher(edc.key)
 	if err != nil {
-		return nil, err
+		return
 	}
 	blockSize := block.BlockSize()
 	blockMode := cipher.NewCBCDecrypter(block, edc.key[:blockSize])
-	origData := make([]byte, len(d))
-	blockMode.CryptBlocks(origData, d)
-	origData, err = edc.pkcs7UnPadding(origData)
-	if err != nil {
-		return nil, err
-	}
-	return origData, err
+	dd = make([]byte, len(d))
+	blockMode.CryptBlocks(dd, d)
+	dd, err = edc.pkcs7UnPadding(dd)
+	return
 }
