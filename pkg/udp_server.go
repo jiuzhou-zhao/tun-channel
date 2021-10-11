@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"context"
+	"github.com/sgostarter/i/logger"
 	"net"
 	"sync"
 )
@@ -11,7 +12,7 @@ type UDPServer struct {
 	ctxCancel context.CancelFunc
 
 	wg        sync.WaitGroup
-	logger    Logger
+	logger    logger.Wrapper
 	crypt     EnDecrypt
 	conn      *net.UDPConn
 	frameSize uint16
@@ -24,14 +25,14 @@ type UDPPackage struct {
 	Addr    *net.UDPAddr
 }
 
-func NewUDPServer(ctx context.Context, addr string, frameSize uint16, logger Logger,
+func NewUDPServer(ctx context.Context, addr string, frameSize uint16, log logger.Wrapper,
 	crypt EnDecrypt) (*UDPServer, error) {
 	if frameSize == 0 {
 		frameSize = 65507
 	}
 
-	if logger == nil {
-		logger = &DummyLogger{}
+	if log == nil {
+		log = logger.NewWrapper(&logger.NopLogger{}).WithFields(logger.FieldString("role", "udpServer"))
 	}
 
 	if crypt == nil {
@@ -39,7 +40,7 @@ func NewUDPServer(ctx context.Context, addr string, frameSize uint16, logger Log
 	}
 
 	srv := &UDPServer{
-		logger:    logger,
+		logger:    log,
 		crypt:     crypt,
 		frameSize: frameSize,
 		ChRead:    make(chan *UDPPackage, 10),
@@ -66,28 +67,44 @@ func NewUDPServer(ctx context.Context, addr string, frameSize uint16, logger Log
 }
 
 func (svr *UDPServer) reader() {
-	svr.logger.Info("udp server reader start")
+	log := svr.logger.WithFields(logger.FieldString("module", "reader"))
+
+	log.Info("udp server reader start")
+
 	defer func() {
 		svr.wg.Done()
 		svr.ctxCancel()
-		svr.logger.Info("udp server reader finish")
+		log.Info("udp server reader finish")
+		close(svr.ChRead)
+		svr.ChRead = nil
 	}()
 
 	var (
-		e error
-		n int
+		e    error
+		n    int
+		loop = true
 	)
-	for {
+	for loop {
+		select {
+		case <-svr.ctx.Done():
+			loop = false
+			break
+		default:
+			break
+		}
+		if !loop {
+			break
+		}
 		pack := &UDPPackage{}
 		pack.Package = make([]byte, svr.frameSize)
 		n, pack.Addr, e = svr.conn.ReadFromUDP(pack.Package)
 		if e != nil {
-			svr.logger.Errorf("read from udp failed: %v", e)
+			log.Errorf("read from udp failed: %v", e)
 			continue
 		}
 		d, e := svr.crypt.Decrypt(pack.Package[:n])
 		if e != nil {
-			svr.logger.Warnf("decrypt data failed: %v, %v", e, n)
+			log.Warnf("decrypt data failed: %v, %v", e, n)
 			continue
 		}
 		pack.Package = d
@@ -96,11 +113,14 @@ func (svr *UDPServer) reader() {
 }
 
 func (svr *UDPServer) writer() {
-	svr.logger.Info("udp server writer start")
+	log := svr.logger.WithFields(logger.FieldString("module", "writer"))
+
+	log.Info("udp server writer start")
+
 	defer func() {
 		svr.wg.Done()
 		_ = svr.conn.Close()
-		svr.logger.Info("udp server writer finish")
+		log.Info("udp server writer finish")
 	}()
 
 	var (
@@ -116,7 +136,7 @@ func (svr *UDPServer) writer() {
 		case v = <-svr.ChWrite:
 			_, e = svr.conn.WriteToUDP(svr.crypt.Encrypt(v.Package), v.Addr)
 			if e != nil {
-				svr.logger.Errorf("udp server write failed: %v", e)
+				log.Errorf("udp server write failed: %v", e)
 				continue
 			}
 		}

@@ -4,6 +4,8 @@ import (
 	"context"
 	"net"
 	"sync"
+
+	"github.com/sgostarter/i/logger"
 )
 
 type UDPClient struct {
@@ -11,7 +13,7 @@ type UDPClient struct {
 	ctxCancel context.CancelFunc
 
 	wg        sync.WaitGroup
-	logger    Logger
+	logger    logger.Wrapper
 	crypt     EnDecrypt
 	conn      net.Conn
 	frameSize uint16
@@ -19,14 +21,14 @@ type UDPClient struct {
 	ChWrite   chan []byte
 }
 
-func NewUDPClient(ctx context.Context, addr string, frameSize uint16, logger Logger,
+func NewUDPClient(ctx context.Context, addr string, frameSize uint16, log logger.Wrapper,
 	crypt EnDecrypt) (t *UDPClient, err error) {
 	if frameSize == 0 {
 		frameSize = 65507
 	}
 
-	if logger == nil {
-		logger = &DummyLogger{}
+	if log == nil {
+		log = logger.NewWrapper(&logger.NopLogger{}).WithFields(logger.FieldString("role", "udpClient"))
 	}
 
 	if crypt == nil {
@@ -34,7 +36,7 @@ func NewUDPClient(ctx context.Context, addr string, frameSize uint16, logger Log
 	}
 
 	cli := &UDPClient{
-		logger:    logger,
+		logger:    log,
 		crypt:     crypt,
 		frameSize: frameSize,
 		ChRead:    make(chan []byte, 10),
@@ -56,23 +58,39 @@ func NewUDPClient(ctx context.Context, addr string, frameSize uint16, logger Log
 }
 
 func (cli *UDPClient) reader() {
-	cli.logger.Info("udp client reader start")
+	log := cli.logger.WithFields(logger.FieldString("module", "reader"))
+
+	log.Info("udp client reader start")
 	defer func() {
 		cli.wg.Done()
 		cli.ctxCancel()
-		cli.logger.Info("udp client reader finish")
+		log.Info("udp client reader finish")
+		close(cli.ChRead)
+		cli.ChRead = nil
 	}()
 
-	for {
+	loop := true
+	for loop {
+		select {
+		case <-cli.ctx.Done():
+			loop = false
+			break
+		default:
+			break
+		}
+		if !loop {
+			break
+		}
+
 		buf := make([]byte, cli.frameSize)
 		n, e := cli.conn.Read(buf)
 		if e != nil {
-			cli.logger.Errorf("read failed: %v", e)
+			log.Errorf("read failed: %v", e)
 			continue
 		}
 		d, e := cli.crypt.Decrypt(buf[:n])
 		if e != nil {
-			cli.logger.Warnf("decrypt data failed: %v, %v", d, n)
+			log.Warnf("decrypt data failed: %v, %v", d, n)
 			continue
 		}
 		cli.ChRead <- d
@@ -80,11 +98,13 @@ func (cli *UDPClient) reader() {
 }
 
 func (cli *UDPClient) writer() {
-	cli.logger.Info("udp client writer start")
+	log := cli.logger.WithFields(logger.FieldString("module", "writer"))
+
+	log.Info("udp client writer start")
 	defer func() {
 		cli.wg.Done()
 		_ = cli.conn.Close()
-		cli.logger.Info("udp client writer finish")
+		log.Info("udp client writer finish")
 	}()
 
 	var (
@@ -100,7 +120,7 @@ func (cli *UDPClient) writer() {
 			v = cli.crypt.Encrypt(v)
 			n, e := cli.conn.Write(v)
 			if e != nil || n != len(v) {
-				cli.logger.Errorf("write failed: %v, %v-%v", e, n, len(v))
+				log.Errorf("write failed: %v, %v-%v", e, n, len(v))
 				continue
 			}
 		}
