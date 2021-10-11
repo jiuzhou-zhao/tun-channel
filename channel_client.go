@@ -2,10 +2,12 @@ package udp_channel
 
 import (
 	"context"
-	"github.com/jiuzhou-zhao/udp-channel/internal/proto"
-	"github.com/jiuzhou-zhao/udp-channel/pkg"
 	"sync"
 	"time"
+
+	"github.com/jiuzhou-zhao/udp-channel/internal/proto"
+	"github.com/jiuzhou-zhao/udp-channel/pkg"
+	"github.com/sgostarter/i/logger"
 )
 
 type ChannelClient struct {
@@ -15,7 +17,7 @@ type ChannelClient struct {
 	wg sync.WaitGroup
 
 	vip    string
-	logger pkg.Logger
+	logger logger.Wrapper
 
 	udpCli *pkg.UDPClient
 
@@ -24,25 +26,26 @@ type ChannelClient struct {
 	lastTouchTime time.Time
 }
 
-func NewChannelClient(ctx context.Context, svrAddress string, vip string, logger pkg.Logger, crypt pkg.EnDecrypt) (*ChannelClient, error) {
-	if logger == nil {
-		logger = &pkg.ConsoleLogger{}
+func NewChannelClient(ctx context.Context, svrAddress string, vip string, log logger.Wrapper, crypt pkg.EnDecrypt) (*ChannelClient, error) {
+	if log == nil {
+		log = logger.NewWrapper(&logger.NopLogger{}).WithFields(logger.FieldString("role", "channelClient"))
 	}
 
 	chnClient := &ChannelClient{
 		vip:             vip,
-		logger:          logger,
+		logger:          log,
 		readPackageChan: make(chan []byte, 10),
 		lastTouchTime:   time.Now(),
 	}
 
 	chnClient.ctx, chnClient.ctxCancel = context.WithCancel(ctx)
 
-	udpCli, err := pkg.NewUDPClient(chnClient.ctx, svrAddress, 0, logger, crypt)
+	udpCli, err := pkg.NewUDPClient(chnClient.ctx, svrAddress, 0, log, crypt)
 	if err != nil {
-		logger.Errorf("new udp client failed: %v", err)
+		log.Errorf("new udp client failed: %v", err)
 		return nil, err
 	}
+
 	chnClient.udpCli = udpCli
 
 	chnClient.wg.Add(1)
@@ -54,10 +57,12 @@ func NewChannelClient(ctx context.Context, svrAddress string, vip string, logger
 }
 
 func (cli *ChannelClient) reader() {
-	cli.logger.Infof("enter channel client reader")
+	log := cli.logger.WithFields(logger.FieldString("module", "reader"))
+
+	log.Infof("enter channel client reader")
 	defer func() {
 		cli.wg.Done()
-		cli.logger.Infof("leave channel client reader")
+		log.Infof("leave channel client reader")
 	}()
 
 	var quit bool
@@ -68,19 +73,19 @@ func (cli *ChannelClient) reader() {
 		case d := <-cli.udpCli.ChRead:
 			m, d, e := proto.Decode(d)
 			if e != nil {
-				cli.logger.Errorf("decode data failed: %v", e)
+				log.Errorf("decode data failed: %v", e)
 				continue
 			}
-			cli.logger.Debugf("receive udp package [len:%v] %v", len(d), m)
+			log.Debugf("receive udp package [len:%v] %v", len(d), m)
 			switch m {
 			case proto.MethodPing:
-				cli.logger.Debug("receive ping message")
+				log.Debug("receive ping message")
 				cli.udpCli.ChWrite <- proto.BuildPongMethodData(d)
 			case proto.MethodPong:
-				cli.logger.Debug("receive pong message")
+				log.Debug("receive pong message")
 				cli.lastTouchTime = time.Now()
 			case proto.MethodKeyRequest:
-				cli.logger.Debug("receive key request message")
+				log.Debug("receive key request message")
 				cli.udpCli.ChWrite <- proto.BuildKeyResponseData(cli.vip)
 			case proto.MethodKeyResponse:
 			case proto.MethodData:
@@ -91,10 +96,12 @@ func (cli *ChannelClient) reader() {
 }
 
 func (cli *ChannelClient) checker() {
-	cli.logger.Infof("enter channel client checker")
+	log := cli.logger.WithFields(logger.FieldString("module", "checker"))
+
+	log.Infof("enter channel client checker")
 	defer func() {
 		cli.wg.Done()
-		cli.logger.Infof("leave channel client checker")
+		log.Infof("leave channel client checker")
 	}()
 
 	var quit bool
@@ -105,7 +112,7 @@ func (cli *ChannelClient) checker() {
 		case <-time.After(30 * time.Second):
 			cli.udpCli.ChWrite <- proto.BuildPingMethodData(nil)
 			if time.Since(cli.lastTouchTime) > time.Minute {
-				cli.logger.Errorf("server miss: %v", time.Since(cli.lastTouchTime))
+				log.Errorf("server miss: %v", time.Since(cli.lastTouchTime))
 			}
 		}
 	}

@@ -2,6 +2,7 @@ package udp_channel
 
 import (
 	"context"
+	"github.com/sgostarter/i/logger"
 	"net"
 	"sync"
 	"time"
@@ -20,7 +21,7 @@ type ChannelServer struct {
 
 	wg sync.WaitGroup
 
-	logger        pkg.Logger
+	logger        logger.Wrapper
 	keyParser     KeyParser
 	vpnVip        string
 	vpnVipAddress *net.UDPAddr
@@ -36,13 +37,13 @@ type ChannelServer struct {
 	removeChannel chan net.UDPAddr
 }
 
-func NewChannelServer(ctx context.Context, addr string, logger pkg.Logger, keyParser KeyParser,
+func NewChannelServer(ctx context.Context, addr string, log logger.Wrapper, keyParser KeyParser,
 	crypt pkg.EnDecrypt, vpnVip string) (*ChannelServer, error) {
-	if logger == nil {
-		logger = &pkg.ConsoleLogger{}
+	if log == nil {
+		log = logger.NewWrapper(&logger.NopLogger{}).WithFields(logger.FieldString("role", "channelClient"))
 	}
 	chnServer := &ChannelServer{
-		logger:        logger,
+		logger:        log,
 		keyParser:     keyParser,
 		vpnVip:        vpnVip,
 		livePool:      pkg.NewLivePool(context.Background(), 20*time.Second, 60*time.Second),
@@ -55,9 +56,9 @@ func NewChannelServer(ctx context.Context, addr string, logger pkg.Logger, keyPa
 	}
 	chnServer.ctx, chnServer.ctxCancel = context.WithCancel(ctx)
 
-	udpSrv, err := pkg.NewUDPServer(chnServer.ctx, addr, 0, logger, crypt)
+	udpSrv, err := pkg.NewUDPServer(chnServer.ctx, addr, 0, log, crypt)
 	if err != nil {
-		logger.Errorf("new udp server failed: %v", err)
+		log.Errorf("new udp server failed: %v", err)
 		return nil, err
 	}
 	chnServer.udpSrv = udpSrv
@@ -71,10 +72,12 @@ func NewChannelServer(ctx context.Context, addr string, logger pkg.Logger, keyPa
 }
 
 func (srv *ChannelServer) reader() {
-	srv.logger.Infof("enter channel server reader")
+	log := srv.logger.WithFields(logger.FieldString("module", "reader"))
+
+	log.Infof("enter channel server reader")
 	defer func() {
 		srv.wg.Done()
-		srv.logger.Infof("leave channel server reader")
+		log.Infof("leave channel server reader")
 	}()
 
 	var quit bool
@@ -85,33 +88,33 @@ func (srv *ChannelServer) reader() {
 		case udpPackage := <-srv.udpSrv.ChRead:
 			m, d, e := proto.Decode(udpPackage.Package)
 			if e != nil {
-				srv.logger.Errorf("decode data failed: %v", e)
+				log.Errorf("decode data failed: %v", e)
 				continue
 			}
-			srv.logger.Debugf("receive udp package [len:%v] from %v", len(udpPackage.Package), udpPackage.Addr.String())
+			log.Debugf("receive udp package [len:%v] from %v", len(udpPackage.Package), udpPackage.Addr.String())
 
 			_, isPending := srv.pendingKeyMap[udpPackage.Addr.String()]
 			_, isChannel := srv.addressKeyMap[udpPackage.Addr.String()]
 			if !isPending && !isChannel {
 				srv.livePool.Add(srv.UDPConnectionLive(*udpPackage.Addr))
 				srv.pendingKeyMap[udpPackage.Addr.String()] = true
-				srv.logger.Debugf("%v put live pool", udpPackage.Addr.String())
+				log.Debugf("%v put live pool", udpPackage.Addr.String())
 			}
 			switch m {
 			case proto.MethodPing:
-				srv.logger.Debugf("receive ping message from %v", udpPackage.Addr.String())
+				log.Debugf("receive ping message from %v", udpPackage.Addr.String())
 				srv.writeChannel <- &pkg.UDPPackage{
 					Package: proto.BuildPongMethodData(d),
 					Addr:    udpPackage.Addr,
 				}
 			case proto.MethodPong:
-				srv.logger.Debugf("receive pong message from %v", udpPackage.Addr.String())
+				log.Debugf("receive pong message from %v", udpPackage.Addr.String())
 				srv.livePool.OnPongResponse(srv.UDPConnectionLive(*udpPackage.Addr))
 			case proto.MethodKeyRequest:
-				srv.logger.Debugf("receive key request message from %v", udpPackage.Addr.String())
+				log.Debugf("receive key request message from %v", udpPackage.Addr.String())
 			case proto.MethodKeyResponse:
 				key := proto.ParseKeyResponsePayloadData(d)
-				srv.logger.Debugf("receive key response message [%v] from %v", key, udpPackage.Addr.String())
+				log.Debugf("receive key response message [%v] from %v", key, udpPackage.Addr.String())
 				oldAddr, ok := srv.keyAddressMap[key]
 				if ok {
 					if oldAddr.String() == udpPackage.Addr.String() {
@@ -132,7 +135,7 @@ func (srv *ChannelServer) reader() {
 			case proto.MethodData:
 				key, d, err := srv.keyParser.ParseData(d)
 				if err != nil {
-					srv.logger.Errorf("key parser parse key failed: %v", err)
+					log.Errorf("key parser parse key failed: %v", err)
 					continue
 				}
 				if addr, ok := srv.keyAddressMap[key]; ok {
@@ -146,25 +149,25 @@ func (srv *ChannelServer) reader() {
 						Addr:    srv.vpnVipAddress,
 					}
 				} else {
-					srv.logger.Errorf("no key %v for data", key)
+					log.Errorf("no key %v for data", key)
 				}
 			}
 		case addr := <-srv.pingChannel:
 			if _, ok := srv.pendingKeyMap[addr.String()]; ok {
-				srv.logger.Debugf("ping: try request key %v", addr.String())
+				log.Debugf("ping: try request key %v", addr.String())
 				srv.writeChannel <- &pkg.UDPPackage{
 					Package: proto.BuildKeyRequestData(),
 					Addr:    &addr,
 				}
 			} else {
-				srv.logger.Debugf("ping: try ping %v", addr.String())
+				log.Debugf("ping: try ping %v", addr.String())
 				srv.writeChannel <- &pkg.UDPPackage{
 					Package: proto.BuildPingMethodData(nil),
 					Addr:    &addr,
 				}
 			}
 		case addr := <-srv.removeChannel:
-			srv.logger.Debugf("remove on %v", addr.String())
+			log.Debugf("remove on %v", addr.String())
 			delete(srv.pendingKeyMap, addr.String())
 			key, ok := srv.addressKeyMap[addr.String()]
 			if ok {
@@ -176,10 +179,12 @@ func (srv *ChannelServer) reader() {
 }
 
 func (srv *ChannelServer) writer() {
-	srv.logger.Infof("enter channel server writer")
+	log := srv.logger.WithFields(logger.FieldString("module", "writer"))
+
+	log.Infof("enter channel server writer")
 	defer func() {
 		srv.wg.Done()
-		srv.logger.Infof("leave channel server writer")
+		log.Infof("leave channel server writer")
 	}()
 
 	var quit bool

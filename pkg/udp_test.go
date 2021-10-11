@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"context"
+	"github.com/sgostarter/i/logger"
 	"github.com/stretchr/testify/assert"
 	"strconv"
 	"sync"
@@ -15,13 +16,15 @@ func TestUDPServer(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
+	log := logger.NewWrapper(logger.NewCommLogger(&logger.FmtRecorder{})).WithFields(logger.FieldString("role", "udpClient"))
+
 	var wg sync.WaitGroup
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 
-		svr, err := NewUDPServer(ctx, svrAddress, 0, nil, nil)
+		svr, err := NewUDPServer(ctx, svrAddress, 0, log, nil)
 		assert.Nil(t, err)
 		assert.NotNil(t, svr)
 
@@ -46,7 +49,7 @@ func TestUDPServer(t *testing.T) {
 			Addr:    datas.Addr,
 		}
 
-		time.Sleep(time.Second)
+		time.Sleep(4 * time.Second)
 		svr.StopAndWait()
 	}()
 
@@ -56,7 +59,7 @@ func TestUDPServer(t *testing.T) {
 
 		time.Sleep(time.Second)
 
-		cli, err := NewUDPClient(ctx, svrAddress, 0, nil, nil)
+		cli, err := NewUDPClient(ctx, svrAddress, 0, log, nil)
 		assert.Nil(t, err)
 		assert.NotNil(t, cli)
 

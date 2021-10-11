@@ -3,12 +3,12 @@ package udp_channel
 import (
 	"context"
 	"fmt"
-	"log"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/jiuzhou-zhao/udp-channel/pkg"
+	"github.com/sgostarter/i/logger"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -25,16 +25,19 @@ func TestChannel(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
+	rLog := logger.NewCommLogger(&logger.FmtRecorder{})
+	log := logger.NewWrapper(rLog).WithFields(logger.FieldString("role", "udpServer"))
+
 	var wg sync.WaitGroup
 
 	wg.Add(1)
 	go func() {
 		defer func() {
 			wg.Done()
-			log.Println("ut exit server routine")
+			log.Info("ut exit server routine")
 		}()
 
-		svr, err := NewChannelServer(ctx, serverAddr, nil, &TestLocalKeyParser{}, pkg.NewAESEnDecrypt("12"), "")
+		svr, err := NewChannelServer(ctx, serverAddr, log, &TestLocalKeyParser{}, pkg.NewAESEnDecrypt("12"), "")
 		assert.Nil(t, err)
 		svr.Wait()
 	}()
@@ -43,7 +46,7 @@ func TestChannel(t *testing.T) {
 	go func() {
 		defer func() {
 			wg.Done()
-			log.Println("ut exit client routine")
+			log.Info("ut exit client routine")
 		}()
 
 		cli, err := NewChannelClient(ctx, serverAddr, "129.1.1.10", nil, pkg.NewAESEnDecrypt("12"))
@@ -51,7 +54,7 @@ func TestChannel(t *testing.T) {
 
 		go func() {
 			for d := range cli.ReadPackageChan() {
-				log.Printf("client receive %v", string(d))
+				log.Infof("client receive %v", string(d))
 			}
 
 		}()
