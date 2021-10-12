@@ -109,11 +109,12 @@ func (srv *ChannelServer) cleanupClient(key string) {
 
 			delete(srv.clientMap, addr.String())
 
-			for oldAddr, info := range srv.clientMap {
-				if oldAddr == addr.String() {
+			for otherAddr, info := range srv.clientMap {
+				if otherAddr == addr.String() {
 					continue
 				}
 
+				srv.logger.Debugf("setupClient unset lanIPs to %s [%s]", info.Addr.String(), info.Key)
 				addrTo := info.Addr
 				srv.writeChannel <- &pkg.UDPPackage{
 					Package: proto.BuildForwardControlData(info.LanIPs, nil),
@@ -145,12 +146,12 @@ func (srv *ChannelServer) setupClient(key string, addr net.UDPAddr, vpnIPs, lanI
 	}
 
 	srv.logger.Debugf("setupClient clientMap size is %d", len(srv.clientMap))
-	for newAddr, info := range srv.clientMap {
-		if newAddr == addr.String() {
+	for otherAddr, info := range srv.clientMap {
+		if otherAddr == addr.String() {
 			continue
 		}
 
-		srv.logger.Debugf("setupClient notify lanIPs to %s", info.Addr.String())
+		srv.logger.Debugf("setupClient set lanIPs to %s [%s]", info.Addr.String(), info.Key)
 		addrTo := info.Addr
 		srv.writeChannel <- &pkg.UDPPackage{
 			Package: proto.BuildForwardControlData(nil, info.LanIPs),
