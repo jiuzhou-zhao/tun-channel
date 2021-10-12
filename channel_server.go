@@ -99,6 +99,7 @@ func (srv *ChannelServer) cleanupClient(key string) {
 	}
 
 	addr, ok := srv.keyAddressMap[key]
+	// nolint: nestif
 	if ok {
 		delete(srv.keyAddressMap, key)
 
@@ -114,10 +115,14 @@ func (srv *ChannelServer) cleanupClient(key string) {
 					continue
 				}
 
+				if len(cli.LanIPs) == 0 {
+					continue
+				}
+
 				srv.logger.Debugf("setupClient unset lanIPs to %s [%s]", info.Addr.String(), info.Key)
 				addrTo := info.Addr
 				srv.writeChannel <- &pkg.UDPPackage{
-					Package: proto.BuildForwardControlData(info.LanIPs, nil),
+					Package: proto.BuildForwardControlData(cli.LanIPs, nil),
 					Addr:    &addrTo,
 				}
 			}
@@ -145,16 +150,19 @@ func (srv *ChannelServer) setupClient(key string, addr net.UDPAddr, vpnIPs, lanI
 		srv.vpnVipAddress = &addr
 	}
 
-	srv.logger.Debugf("setupClient clientMap size is %d", len(srv.clientMap))
 	for otherAddr, info := range srv.clientMap {
 		if otherAddr == addr.String() {
+			continue
+		}
+
+		if len(lanIPs) == 0 {
 			continue
 		}
 
 		srv.logger.Debugf("setupClient set lanIPs to %s [%s]", info.Addr.String(), info.Key)
 		addrTo := info.Addr
 		srv.writeChannel <- &pkg.UDPPackage{
-			Package: proto.BuildForwardControlData(nil, info.LanIPs),
+			Package: proto.BuildForwardControlData(nil, lanIPs),
 			Addr:    &addrTo,
 		}
 	}
