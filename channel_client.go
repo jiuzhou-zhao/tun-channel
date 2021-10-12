@@ -125,8 +125,8 @@ func (cli *ChannelClient) reader() {
 			case proto.MethodForwardControl:
 				oldIPs, newIPs, err := proto.ParseForwardControlPayloadData(d)
 				cli.incomingMsgChan <- &IncomingMsg{
-					AddedForwardIPs:   oldIPs,
-					RemovedForwardIPs: newIPs,
+					AddedForwardIPs:   newIPs,
+					RemovedForwardIPs: oldIPs,
 					Error:             err,
 				}
 			}
