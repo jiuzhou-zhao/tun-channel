@@ -30,6 +30,7 @@ type AESEnDecrypt struct {
 
 func NewAESEnDecrypt(key string) *AESEnDecrypt {
 	rKey := sha256.Sum256([]byte(key))
+
 	return &AESEnDecrypt{
 		key: rKey[:16],
 	}
@@ -37,15 +38,17 @@ func NewAESEnDecrypt(key string) *AESEnDecrypt {
 
 func (edc *AESEnDecrypt) pkcs7Padding(text []byte, blockSize int) []byte {
 	padding := blockSize - len(text)%blockSize
+
 	return append(text, bytes.Repeat([]byte{byte(padding)}, padding)...)
 }
 
 func (edc *AESEnDecrypt) pkcs7UnPadding(origData []byte) ([]byte, error) {
-	length := len(origData)
-	if length == 0 {
+	if len(origData) == 0 {
+		// nolint: goerr113
 		return nil, errors.New("bad data")
 	}
-	return origData[:(length - int(origData[length-1]))], nil
+
+	return origData[:(len(origData) - int(origData[len(origData)-1]))], nil
 }
 
 func (edc *AESEnDecrypt) Encrypt(d []byte) []byte {
@@ -55,6 +58,7 @@ func (edc *AESEnDecrypt) Encrypt(d []byte) []byte {
 	blocMode := cipher.NewCBCEncrypter(block, edc.key[:blockSize])
 	cd := make([]byte, len(d))
 	blocMode.CryptBlocks(cd, d)
+
 	return cd
 }
 
@@ -62,6 +66,7 @@ func (edc *AESEnDecrypt) Decrypt(d []byte) (dd []byte, err error) {
 	defer func() {
 		errRecover := recover()
 		if errRecover != nil {
+			// nolint: goerr113
 			err = fmt.Errorf("panic: %v", errRecover)
 		}
 	}()
@@ -70,10 +75,12 @@ func (edc *AESEnDecrypt) Decrypt(d []byte) (dd []byte, err error) {
 	if err != nil {
 		return
 	}
+
 	blockSize := block.BlockSize()
 	blockMode := cipher.NewCBCDecrypter(block, edc.key[:blockSize])
 	dd = make([]byte, len(d))
 	blockMode.CryptBlocks(dd, d)
 	dd, err = edc.pkcs7UnPadding(dd)
+
 	return
 }

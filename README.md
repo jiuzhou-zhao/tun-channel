@@ -7,5 +7,16 @@
 
 ### vpn
 
-* client + vpn route or port
-* 
+* client
+  * send vpn route or port
+  * change firewall
+* server: vpn-vip
+
+
+### lan
+
+* client
+  * send lan-ips
+  * change firewall
+* server
+  * change firewall

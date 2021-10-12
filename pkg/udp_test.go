@@ -2,12 +2,13 @@ package pkg
 
 import (
 	"context"
-	"github.com/sgostarter/i/logger"
-	"github.com/stretchr/testify/assert"
 	"strconv"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/sgostarter/i/logger"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestUDPServer(t *testing.T) {
@@ -21,6 +22,7 @@ func TestUDPServer(t *testing.T) {
 	var wg sync.WaitGroup
 
 	wg.Add(1)
+
 	go func() {
 		defer wg.Done()
 
@@ -54,6 +56,7 @@ func TestUDPServer(t *testing.T) {
 	}()
 
 	wg.Add(1)
+
 	go func() {
 		defer wg.Done()
 

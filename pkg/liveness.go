@@ -89,6 +89,7 @@ func (pool *LivePool) mainRoutine() {
 
 					continue
 				}
+
 				go func(item LiveItem) {
 					item.DoPingRequest()
 				}(ii.item)
