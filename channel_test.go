@@ -1,4 +1,4 @@
-package udp_channel
+package udpchannel
 
 import (
 	"context"
@@ -31,6 +31,7 @@ func TestChannel(t *testing.T) {
 	var wg sync.WaitGroup
 
 	wg.Add(1)
+
 	go func() {
 		defer func() {
 			wg.Done()
@@ -43,20 +44,25 @@ func TestChannel(t *testing.T) {
 	}()
 
 	wg.Add(1)
+
 	go func() {
 		defer func() {
 			wg.Done()
 			log.Info("ut exit client routine")
 		}()
 
-		cli, err := NewChannelClient(ctx, serverAddr, "129.1.1.10", nil, pkg.NewAESEnDecrypt("12"))
+		d := &ChannelClientData{
+			ServerAddr: serverAddr,
+			VIP:        "129.1.1.10",
+			Crypt:      pkg.NewAESEnDecrypt("12"),
+		}
+		cli, err := NewChannelClient(ctx, d)
 		assert.Nil(t, err)
 
 		go func() {
-			for d := range cli.ReadPackageChan() {
-				log.Infof("client receive %v", string(d))
+			for d := range cli.ReadIncomingMsgChan() {
+				log.Infof("client receive %v", string(d.Data))
 			}
-
 		}()
 
 		for idx := 0; idx < 10; idx++ {
