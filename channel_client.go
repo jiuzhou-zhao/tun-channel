@@ -23,7 +23,7 @@ type ChannelClient struct {
 
 	wg sync.WaitGroup
 
-	vip    string
+	key    string
 	vpnIPs []string
 	lanIPs []string
 	logger logger.Wrapper
@@ -37,7 +37,7 @@ type ChannelClient struct {
 
 type ChannelClientData struct {
 	ServerAddr string
-	VIP        string
+	Key        string // VIP CIDR
 	VpnIPs     []string
 	LanIPs     []string
 	Log        logger.Wrapper
@@ -68,7 +68,7 @@ func NewChannelClient(ctx context.Context, d *ChannelClientData) (*ChannelClient
 	}
 
 	chnClient := &ChannelClient{
-		vip:             d.VIP,
+		key:             d.Key,
 		vpnIPs:          vpnCidrs,
 		lanIPs:          lanCidrs,
 		logger:          d.Log,
@@ -134,7 +134,7 @@ func (cli *ChannelClient) reader() {
 				cli.lastTouchTime = time.Now()
 			case proto.MethodKeyRequest:
 				log.Debug("receive key request message")
-				cli.udpCli.ChWrite <- proto.BuildKeyResponseData(cli.vip, cli.vpnIPs, cli.lanIPs)
+				cli.udpCli.ChWrite <- proto.BuildKeyResponseData(cli.key, cli.vpnIPs, cli.lanIPs)
 			case proto.MethodKeyResponse:
 			case proto.MethodData:
 				cli.incomingMsgChan <- &IncomingMsg{
