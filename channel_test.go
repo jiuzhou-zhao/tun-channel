@@ -62,7 +62,7 @@ func TestChannel(t *testing.T) {
 
 		d := &ChannelClientData{
 			ServerAddr: serverAddr,
-			VIP:        "129.1.1.10",
+			Key:        "129.1.1.10",
 			Crypt:      pkg.NewAESEnDecrypt("12"),
 		}
 		cli, err := NewChannelClient(ctx, d)

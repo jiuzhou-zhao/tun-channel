@@ -50,20 +50,24 @@ func NewChannelClient(ctx context.Context, d *ChannelClientData) (*ChannelClient
 	}
 
 	vpnCidrs := make([]string, 0, len(d.VpnIPs))
+
 	for _, ip := range d.VpnIPs {
 		cidr, err := ToCIDR(ip)
 		if err != nil {
 			return nil, err
 		}
+
 		vpnCidrs = append(vpnCidrs, cidr)
 	}
 
 	lanCidrs := make([]string, 0, len(d.LanIPs))
+
 	for _, ip := range d.LanIPs {
 		cidr, err := ToCIDR(ip)
 		if err != nil {
 			return nil, err
 		}
+
 		lanCidrs = append(lanCidrs, cidr)
 	}
 
