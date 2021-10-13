@@ -22,15 +22,18 @@ type ChannelClientDataInfo struct {
 	Key    string
 	VpnIPs []string
 	LanIPs []string
-
-	lanIPsMap map[string]interface{}
 }
 
-func (di *ChannelClientDataInfo) Build() {
-	di.lanIPsMap = make(map[string]interface{})
-	for _, ip := range di.LanIPs {
-		di.lanIPsMap[ip] = make([]int, 0)
-	}
+type ClientInfos struct {
+	VIP     string
+	Address string
+	VpnIPs  []string
+	LanIPs  []string
+}
+
+type GetClientsInfosRequest struct {
+	ci []*ClientInfos
+	wg *sync.WaitGroup
 }
 
 type ChannelServer struct {
@@ -46,13 +49,14 @@ type ChannelServer struct {
 
 	udpSrv *pkg.UDPServer
 
-	livePool      *pkg.LivePool
-	pendingKeyMap map[string]interface{}            // ip+port ->
-	clientMap     map[string]*ChannelClientDataInfo // ip+port -> client
-	keyAddressMap map[string]net.UDPAddr            // key -> ip+port
-	pingChannel   chan net.UDPAddr
-	writeChannel  chan *pkg.UDPPackage
-	removeChannel chan net.UDPAddr
+	livePool               *pkg.LivePool
+	pendingKeyMap          map[string]interface{}            // ip+port ->
+	clientMap              map[string]*ChannelClientDataInfo // ip+port -> client
+	keyAddressMap          map[string]net.UDPAddr            // key -> ip+port
+	pingChannel            chan net.UDPAddr
+	writeChannel           chan *pkg.UDPPackage
+	removeChannel          chan net.UDPAddr
+	getClientsInfosChannel chan *GetClientsInfosRequest
 }
 
 func NewChannelServer(ctx context.Context, addr string, log logger.Wrapper, keyParser KeyParser,
@@ -71,16 +75,17 @@ func NewChannelServer(ctx context.Context, addr string, log logger.Wrapper, keyP
 	}
 
 	chnServer := &ChannelServer{
-		logger:        log,
-		keyParser:     keyParser,
-		vpnVCidr:      vpnVip,
-		livePool:      pkg.NewLivePool(context.Background(), 20*time.Second, 60*time.Second),
-		pendingKeyMap: make(map[string]interface{}),
-		clientMap:     make(map[string]*ChannelClientDataInfo),
-		keyAddressMap: make(map[string]net.UDPAddr),
-		pingChannel:   make(chan net.UDPAddr, 10),
-		writeChannel:  make(chan *pkg.UDPPackage, 10),
-		removeChannel: make(chan net.UDPAddr, 10),
+		logger:                 log,
+		keyParser:              keyParser,
+		vpnVCidr:               vpnVip,
+		livePool:               pkg.NewLivePool(context.Background(), 20*time.Second, 60*time.Second),
+		pendingKeyMap:          make(map[string]interface{}),
+		clientMap:              make(map[string]*ChannelClientDataInfo),
+		keyAddressMap:          make(map[string]net.UDPAddr),
+		pingChannel:            make(chan net.UDPAddr, 10),
+		writeChannel:           make(chan *pkg.UDPPackage, 10),
+		removeChannel:          make(chan net.UDPAddr, 10),
+		getClientsInfosChannel: make(chan *GetClientsInfosRequest, 10),
 	}
 	chnServer.ctx, chnServer.ctxCancel = context.WithCancel(ctx)
 
@@ -102,6 +107,18 @@ func NewChannelServer(ctx context.Context, addr string, log logger.Wrapper, keyP
 	go chnServer.writer()
 
 	return chnServer, nil
+}
+
+func (srv *ChannelServer) GetClientInfos() []*ClientInfos {
+	req := &GetClientsInfosRequest{
+		wg: &sync.WaitGroup{},
+	}
+	req.wg.Add(1)
+	srv.getClientsInfosChannel <- req
+
+	req.wg.Wait()
+
+	return req.ci
 }
 
 func (srv *ChannelServer) cleanupClient(key string) {
@@ -155,7 +172,6 @@ func (srv *ChannelServer) setupClient(key string, addr net.UDPAddr, vpnIPs, lanI
 		VpnIPs: vpnIPs,
 		LanIPs: lanIPs,
 	}
-	cli.Build()
 	srv.clientMap[addr.String()] = cli
 
 	srv.keyAddressMap[key] = addr
@@ -319,6 +335,17 @@ func (srv *ChannelServer) reader() {
 			if cli, ok := srv.clientMap[addr.String()]; ok {
 				srv.cleanupClient(cli.Key)
 			}
+		case gci := <-srv.getClientsInfosChannel:
+			for _, info := range srv.clientMap {
+				gci.ci = append(gci.ci, &ClientInfos{
+					VIP:     info.Key,
+					Address: info.Addr.String(),
+					VpnIPs:  info.VpnIPs,
+					LanIPs:  info.LanIPs,
+				})
+			}
+
+			gci.wg.Done()
 		}
 	}
 }
