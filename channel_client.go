@@ -49,10 +49,28 @@ func NewChannelClient(ctx context.Context, d *ChannelClientData) (*ChannelClient
 		d.Log = logger.NewWrapper(&logger.NopLogger{}).WithFields(logger.FieldString("role", "channelClient"))
 	}
 
+	vpnCidrs := make([]string, 0, len(d.VpnIPs))
+	for _, ip := range d.VpnIPs {
+		cidr, err := ToCIDR(ip)
+		if err != nil {
+			return nil, err
+		}
+		vpnCidrs = append(vpnCidrs, cidr)
+	}
+
+	lanCidrs := make([]string, 0, len(d.LanIPs))
+	for _, ip := range d.LanIPs {
+		cidr, err := ToCIDR(ip)
+		if err != nil {
+			return nil, err
+		}
+		lanCidrs = append(lanCidrs, cidr)
+	}
+
 	chnClient := &ChannelClient{
 		vip:             d.VIP,
-		vpnIPs:          d.VpnIPs,
-		lanIPs:          d.LanIPs,
+		vpnIPs:          vpnCidrs,
+		lanIPs:          lanCidrs,
 		logger:          d.Log,
 		incomingMsgChan: make(chan *IncomingMsg, 10),
 		lastTouchTime:   time.Now(),

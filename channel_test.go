@@ -3,6 +3,7 @@ package udpchannel
 import (
 	"context"
 	"fmt"
+	"net"
 	"sync"
 	"testing"
 	"time"
@@ -17,6 +18,14 @@ type TestLocalKeyParser struct {
 
 func (parser *TestLocalKeyParser) ParseData(d []byte) (key string, dd []byte, err error) {
 	return "129.1.1.10", d, nil
+}
+
+func (parser *TestLocalKeyParser) ParseKeyFromIPOrCIDR(s string) (key string, err error) {
+	return "129.1.1.10", nil
+}
+
+func (parser *TestLocalKeyParser) CompareKeyWithCIDR(key string, cidr string) bool {
+	return true
 }
 
 func TestChannel(t *testing.T) {
@@ -74,4 +83,11 @@ func TestChannel(t *testing.T) {
 	}()
 
 	wg.Wait()
+}
+
+func TestIP(t *testing.T) {
+	a := net.ParseIP("192.168.31.12").DefaultMask()
+	// a := net.IPMask(net.ParseIP("192.168.31.12"))
+	t.Log(a.Size())
+	t.Log(a.String())
 }

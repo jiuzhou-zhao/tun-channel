@@ -13,6 +13,8 @@ import (
 
 type KeyParser interface {
 	ParseData(d []byte) (key string, dd []byte, err error)
+	ParseKeyFromIPOrCIDR(s string) (key string, err error)
+	CompareKeyWithCIDR(key string, cidr string) bool
 }
 
 type ChannelClientDataInfo struct {
@@ -39,7 +41,7 @@ type ChannelServer struct {
 
 	logger        logger.Wrapper
 	keyParser     KeyParser
-	vpnVip        string
+	vpnVCidr      string
 	vpnVipAddress *net.UDPAddr
 
 	udpSrv *pkg.UDPServer
@@ -59,10 +61,19 @@ func NewChannelServer(ctx context.Context, addr string, log logger.Wrapper, keyP
 		log = logger.NewWrapper(&logger.NopLogger{}).WithFields(logger.FieldString("role", "channelClient"))
 	}
 
+	if vpnVip != "" {
+		vpnCIDR, err := ToCIDR(vpnVip)
+		if err != nil {
+			return nil, err
+		}
+
+		vpnVip = vpnCIDR
+	}
+
 	chnServer := &ChannelServer{
 		logger:        log,
 		keyParser:     keyParser,
-		vpnVip:        vpnVip,
+		vpnVCidr:      vpnVip,
 		livePool:      pkg.NewLivePool(context.Background(), 20*time.Second, 60*time.Second),
 		pendingKeyMap: make(map[string]interface{}),
 		clientMap:     make(map[string]*ChannelClientDataInfo),
@@ -94,8 +105,10 @@ func NewChannelServer(ctx context.Context, addr string, log logger.Wrapper, keyP
 }
 
 func (srv *ChannelServer) cleanupClient(key string) {
-	if key == srv.vpnVip {
-		srv.vpnVipAddress = nil
+	if srv.vpnVCidr != "" {
+		if srv.keyParser.CompareKeyWithCIDR(key, srv.vpnVCidr) {
+			srv.vpnVipAddress = nil
+		}
 	}
 
 	addr, ok := srv.keyAddressMap[key]
@@ -156,8 +169,10 @@ func (srv *ChannelServer) setupClient(key string, addr net.UDPAddr, vpnIPs, lanI
 		srv.keyAddressMap[ip.To4().String()] = addr
 	}
 
-	if key == srv.vpnVip {
-		srv.vpnVipAddress = &addr
+	if srv.vpnVCidr != "" {
+		if srv.keyParser.CompareKeyWithCIDR(key, srv.vpnVCidr) {
+			srv.vpnVipAddress = &addr
+		}
 	}
 
 	for otherAddr, info := range srv.clientMap {
