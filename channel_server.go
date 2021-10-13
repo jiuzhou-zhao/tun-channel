@@ -104,8 +104,13 @@ func (srv *ChannelServer) cleanupClient(key string) {
 		delete(srv.keyAddressMap, key)
 
 		if cli, ok := srv.clientMap[addr.String()]; ok {
-			for _, ip := range cli.LanIPs {
-				delete(srv.keyAddressMap, ip)
+			for _, cidr := range cli.LanIPs {
+				ip, _, err := net.ParseCIDR(cidr)
+				if err != nil {
+					srv.logger.Fatal(err)
+				}
+
+				delete(srv.keyAddressMap, ip.To4().String())
 			}
 
 			delete(srv.clientMap, addr.String())
@@ -142,8 +147,13 @@ func (srv *ChannelServer) setupClient(key string, addr net.UDPAddr, vpnIPs, lanI
 
 	srv.keyAddressMap[key] = addr
 
-	for _, ip := range lanIPs {
-		srv.keyAddressMap[ip] = addr
+	for _, cidr := range lanIPs {
+		ip, _, err := net.ParseCIDR(cidr)
+		if err != nil {
+			srv.logger.Fatal(err)
+		}
+
+		srv.keyAddressMap[ip.To4().String()] = addr
 	}
 
 	if key == srv.vpnVip {
