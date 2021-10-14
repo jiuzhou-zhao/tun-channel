@@ -22,6 +22,10 @@ type ChannelClientDataInfo struct {
 	Key    string
 	VpnIPs []string
 	LanIPs []string
+
+	CreateTime     time.Time
+	LastAccessTime time.Time
+	TransBytes     uint64
 }
 
 type ClientInfos struct {
@@ -29,6 +33,10 @@ type ClientInfos struct {
 	Address string
 	VpnIPs  []string
 	LanIPs  []string
+
+	CreateTime     time.Time
+	LastAccessTime time.Time
+	TransBytes     uint64
 }
 
 type GetClientsInfosRequest struct {
@@ -167,10 +175,12 @@ func (srv *ChannelServer) cleanupClient(key string) {
 
 func (srv *ChannelServer) setupClient(key string, addr net.UDPAddr, vpnIPs, lanIPs []string) {
 	cli := &ChannelClientDataInfo{
-		Addr:   addr,
-		Key:    key,
-		VpnIPs: vpnIPs,
-		LanIPs: lanIPs,
+		Addr:           addr,
+		Key:            key,
+		VpnIPs:         vpnIPs,
+		LanIPs:         lanIPs,
+		CreateTime:     time.Now(),
+		LastAccessTime: time.Now(),
 	}
 	srv.clientMap[addr.String()] = cli
 
@@ -289,12 +299,18 @@ func (srv *ChannelServer) processUDPServerInput(log logger.Wrapper, udpPackage *
 		srv.processPingMessage(log, udpPackage, d)
 	case proto.MethodPong:
 		srv.processPongMessage(log, udpPackage, d)
+		if ci, ok := srv.clientMap[udpPackage.Addr.String()]; ok {
+			ci.LastAccessTime = time.Now()
+		}
 	case proto.MethodKeyRequest:
 		log.Debugf("receive key request message from %v", udpPackage.Addr.String())
 	case proto.MethodKeyResponse:
 		srv.processKeyResponseMessage(log, udpPackage, d)
 	case proto.MethodData:
 		srv.processDataMessage(log, d)
+		if ci, ok := srv.clientMap[udpPackage.Addr.String()]; ok {
+			ci.TransBytes += uint64(len(d))
+		}
 	}
 }
 
@@ -338,10 +354,13 @@ func (srv *ChannelServer) reader() {
 		case gci := <-srv.getClientsInfosChannel:
 			for _, info := range srv.clientMap {
 				gci.ci = append(gci.ci, &ClientInfos{
-					VIP:     info.Key,
-					Address: info.Addr.String(),
-					VpnIPs:  info.VpnIPs,
-					LanIPs:  info.LanIPs,
+					VIP:            info.Key,
+					Address:        info.Addr.String(),
+					VpnIPs:         info.VpnIPs,
+					LanIPs:         info.LanIPs,
+					CreateTime:     info.CreateTime,
+					LastAccessTime: info.LastAccessTime,
+					TransBytes:     info.TransBytes,
 				})
 			}
 
