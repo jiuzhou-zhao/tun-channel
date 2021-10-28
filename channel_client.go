@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jiuzhou-zhao/data-channel/inter"
 	"github.com/jiuzhou-zhao/udp-channel/internal/proto"
-	"github.com/jiuzhou-zhao/udp-channel/pkg"
 	"github.com/sgostarter/i/logger"
 )
 
@@ -28,7 +28,7 @@ type ChannelClient struct {
 	lanIPs []string
 	logger logger.Wrapper
 
-	udpCli *pkg.UDPClient
+	client inter.Client
 
 	incomingMsgChan chan *IncomingMsg
 
@@ -36,12 +36,11 @@ type ChannelClient struct {
 }
 
 type ChannelClientData struct {
-	ServerAddr string
-	Key        string // VIP CIDR
-	VpnIPs     []string
-	LanIPs     []string
-	Log        logger.Wrapper
-	Crypt      pkg.EnDecrypt
+	Key               string // VIP CIDR
+	VpnIPs            []string
+	LanIPs            []string
+	Log               logger.Wrapper
+	ClientDataChannel inter.Client
 }
 
 func NewChannelClient(ctx context.Context, d *ChannelClientData) (*ChannelClient, error) {
@@ -76,20 +75,12 @@ func NewChannelClient(ctx context.Context, d *ChannelClientData) (*ChannelClient
 		vpnIPs:          vpnCidrs,
 		lanIPs:          lanCidrs,
 		logger:          d.Log,
+		client:          d.ClientDataChannel,
 		incomingMsgChan: make(chan *IncomingMsg, 10),
 		lastTouchTime:   time.Now(),
 	}
 
 	chnClient.ctx, chnClient.ctxCancel = context.WithCancel(ctx)
-
-	udpCli, err := pkg.NewUDPClient(chnClient.ctx, d.ServerAddr, 0, d.Log, d.Crypt)
-	if err != nil {
-		d.Log.Errorf("new udp client failed: %v", err)
-
-		return nil, err
-	}
-
-	chnClient.udpCli = udpCli
 
 	chnClient.wg.Add(1)
 
@@ -118,7 +109,7 @@ func (cli *ChannelClient) reader() {
 		select {
 		case <-cli.ctx.Done():
 			quit = true
-		case d := <-cli.udpCli.ChRead:
+		case d := <-cli.client.ReadCh():
 			m, d, e := proto.Decode(d)
 			if e != nil {
 				log.Errorf("decode data failed: %v", e)
@@ -131,14 +122,14 @@ func (cli *ChannelClient) reader() {
 			switch m {
 			case proto.MethodPing:
 				log.Debug("receive ping message")
-				cli.udpCli.ChWrite <- proto.BuildPongMethodData(d)
+				cli.client.WriteCh() <- proto.BuildPongMethodData(d)
 			case proto.MethodPong:
 				log.Debug("receive pong message")
 
 				cli.lastTouchTime = time.Now()
 			case proto.MethodKeyRequest:
 				log.Debug("receive key request message")
-				cli.udpCli.ChWrite <- proto.BuildKeyResponseData(cli.key, cli.vpnIPs, cli.lanIPs)
+				cli.client.WriteCh() <- proto.BuildKeyResponseData(cli.key, cli.vpnIPs, cli.lanIPs)
 			case proto.MethodKeyResponse:
 			case proto.MethodData:
 				cli.incomingMsgChan <- &IncomingMsg{
@@ -172,7 +163,8 @@ func (cli *ChannelClient) checker() {
 		case <-cli.ctx.Done():
 			quit = true
 		case <-time.After(30 * time.Second):
-			cli.udpCli.ChWrite <- proto.BuildPingMethodData(nil)
+			cli.client.WriteCh() <- proto.BuildPingMethodData(nil)
+
 			if time.Since(cli.lastTouchTime) > time.Minute {
 				log.Errorf("server miss: %v", time.Since(cli.lastTouchTime))
 			}
@@ -181,7 +173,7 @@ func (cli *ChannelClient) checker() {
 }
 
 func (cli *ChannelClient) WritePackage(d []byte) {
-	cli.udpCli.ChWrite <- proto.BuildData(d)
+	cli.client.WriteCh() <- proto.BuildData(d)
 }
 
 func (cli *ChannelClient) ReadIncomingMsgChan() <-chan *IncomingMsg {
@@ -190,11 +182,6 @@ func (cli *ChannelClient) ReadIncomingMsgChan() <-chan *IncomingMsg {
 
 func (cli *ChannelClient) StopAndWait() {
 	cli.ctxCancel()
-	cli.udpCli.StopAndWait()
-	cli.wg.Wait()
-}
-
-func (cli *ChannelClient) Wait() {
-	cli.udpCli.Wait()
+	cli.client.CloseAndWait()
 	cli.wg.Wait()
 }

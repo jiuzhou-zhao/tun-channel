@@ -2,10 +2,10 @@ package udpchannel
 
 import (
 	"context"
-	"net"
 	"sync"
 	"time"
 
+	"github.com/jiuzhou-zhao/data-channel/inter"
 	"github.com/jiuzhou-zhao/udp-channel/internal/proto"
 	"github.com/jiuzhou-zhao/udp-channel/pkg"
 	"github.com/sgostarter/i/logger"
@@ -18,7 +18,7 @@ type KeyParser interface {
 }
 
 type ChannelClientDataInfo struct {
-	Addr   net.UDPAddr
+	Addr   string
 	Key    string
 	VpnIPs []string
 	LanIPs []string
@@ -52,59 +52,51 @@ type ChannelServer struct {
 
 	logger        logger.Wrapper
 	keyParser     KeyParser
-	vpnVCidr      string
-	vpnVipAddress *net.UDPAddr
+	vpnCIDR       string
+	vpnVipAddress string
 
-	udpSrv *pkg.UDPServer
+	server inter.Server
 
 	livePool               *pkg.LivePool
-	pendingKeyMap          map[string]interface{}            // ip+port ->
-	clientMap              map[string]*ChannelClientDataInfo // ip+port -> client
-	keyAddressMap          map[string]net.UDPAddr            // key -> ip+port
-	pingChannel            chan net.UDPAddr
-	writeChannel           chan *pkg.UDPPackage
-	removeChannel          chan net.UDPAddr
+	pendingKeyMap          map[string]interface{}            // data_channel_client_addr ->
+	clientMap              map[string]*ChannelClientDataInfo // data_channel_client_addr -> client
+	keyAddressMap          map[string]string                 // key -> data_channel_client_addr
+	pingChannel            chan string
+	writeChannel           chan *inter.ServerData
+	removeChannel          chan string
 	getClientsInfosChannel chan *GetClientsInfosRequest
 }
 
-func NewChannelServer(ctx context.Context, addr string, log logger.Wrapper, keyParser KeyParser,
-	crypt pkg.EnDecrypt, vpnVip string) (*ChannelServer, error) {
+func NewChannelServer(ctx context.Context, log logger.Wrapper, keyParser KeyParser,
+	server inter.Server, vpnIP string) (*ChannelServer, error) {
 	if log == nil {
-		log = logger.NewWrapper(&logger.NopLogger{}).WithFields(logger.FieldString("role", "channelClient"))
+		log = logger.NewWrapper(logger.NewCommLogger(&logger.FmtRecorder{})).WithFields(logger.FieldString("role", "channelClient"))
 	}
 
-	if vpnVip != "" {
-		vpnCIDR, err := ToCIDR(vpnVip)
+	if vpnIP != "" {
+		vpnCIDR, err := ToCIDR(vpnIP)
 		if err != nil {
 			return nil, err
 		}
 
-		vpnVip = vpnCIDR
+		vpnIP = vpnCIDR
 	}
 
 	chnServer := &ChannelServer{
 		logger:                 log,
 		keyParser:              keyParser,
-		vpnVCidr:               vpnVip,
+		vpnCIDR:                vpnIP,
+		server:                 server,
 		livePool:               pkg.NewLivePool(context.Background(), 20*time.Second, 60*time.Second),
 		pendingKeyMap:          make(map[string]interface{}),
 		clientMap:              make(map[string]*ChannelClientDataInfo),
-		keyAddressMap:          make(map[string]net.UDPAddr),
-		pingChannel:            make(chan net.UDPAddr, 10),
-		writeChannel:           make(chan *pkg.UDPPackage, 10),
-		removeChannel:          make(chan net.UDPAddr, 10),
+		keyAddressMap:          make(map[string]string),
+		pingChannel:            make(chan string, 10),
+		writeChannel:           make(chan *inter.ServerData, 10),
+		removeChannel:          make(chan string, 10),
 		getClientsInfosChannel: make(chan *GetClientsInfosRequest, 10),
 	}
 	chnServer.ctx, chnServer.ctxCancel = context.WithCancel(ctx)
-
-	udpSrv, err := pkg.NewUDPServer(chnServer.ctx, addr, 0, log, crypt)
-	if err != nil {
-		log.Errorf("new udp server failed: %v", err)
-
-		return nil, err
-	}
-
-	chnServer.udpSrv = udpSrv
 
 	chnServer.wg.Add(1)
 
@@ -130,51 +122,46 @@ func (srv *ChannelServer) GetClientInfos() []*ClientInfos {
 }
 
 func (srv *ChannelServer) cleanupClient(key string) {
-	if srv.vpnVCidr != "" {
-		if srv.keyParser.CompareKeyWithCIDR(key, srv.vpnVCidr) {
-			srv.vpnVipAddress = nil
-		}
+	if srv.vpnCIDR != "" && srv.keyParser.CompareKeyWithCIDR(key, srv.vpnCIDR) {
+		srv.vpnVipAddress = ""
 	}
 
 	addr, ok := srv.keyAddressMap[key]
-	// nolint: nestif
-	if ok {
-		delete(srv.keyAddressMap, key)
+	if !ok {
+		return
+	}
 
-		if cli, ok := srv.clientMap[addr.String()]; ok {
-			for _, cidr := range cli.LanIPs {
-				ip, _, err := net.ParseCIDR(cidr)
-				if err != nil {
-					srv.logger.Fatal(err)
-				}
+	delete(srv.keyAddressMap, key)
 
-				delete(srv.keyAddressMap, ip.To4().String())
-			}
+	cli, ok := srv.clientMap[addr]
+	if !ok {
+		return
+	}
 
-			delete(srv.clientMap, addr.String())
+	for _, cidr := range cli.LanIPs {
+		k, err := srv.keyParser.ParseKeyFromIPOrCIDR(cidr)
+		if err != nil {
+			srv.logger.Fatal(err)
+		}
 
-			for otherAddr, info := range srv.clientMap {
-				if otherAddr == addr.String() {
-					continue
-				}
+		delete(srv.keyAddressMap, k)
+	}
 
-				if len(cli.LanIPs) == 0 {
-					continue
-				}
+	delete(srv.clientMap, addr)
 
-				srv.logger.Debugf("setupClient unset lanIPs to %s [%s]", info.Addr.String(), info.Key)
-				addrTo := info.Addr
-				srv.writeChannel <- &pkg.UDPPackage{
-					Package: proto.BuildForwardControlData(cli.LanIPs, nil),
-					Addr:    &addrTo,
-				}
+	if len(cli.LanIPs) > 0 {
+		for _, info := range srv.clientMap {
+			srv.logger.Debugf("setupClient unset lanIPs to %s [%s]", info.Addr, info.Key)
+			srv.writeChannel <- &inter.ServerData{
+				Data: proto.BuildForwardControlData(cli.LanIPs, nil),
+				Addr: info.Addr,
 			}
 		}
 	}
 }
 
-func (srv *ChannelServer) setupClient(key string, addr net.UDPAddr, vpnIPs, lanIPs []string) {
-	cli := &ChannelClientDataInfo{
+func (srv *ChannelServer) setupClient(key string, addr string, vpnIPs, lanIPs []string) {
+	srv.clientMap[addr] = &ChannelClientDataInfo{
 		Addr:           addr,
 		Key:            key,
 		VpnIPs:         vpnIPs,
@@ -182,57 +169,55 @@ func (srv *ChannelServer) setupClient(key string, addr net.UDPAddr, vpnIPs, lanI
 		CreateTime:     time.Now(),
 		LastAccessTime: time.Now(),
 	}
-	srv.clientMap[addr.String()] = cli
 
 	srv.keyAddressMap[key] = addr
 
 	for _, cidr := range lanIPs {
-		ip, _, err := net.ParseCIDR(cidr)
+		k, err := srv.keyParser.ParseKeyFromIPOrCIDR(cidr)
 		if err != nil {
 			srv.logger.Fatal(err)
 		}
 
-		srv.keyAddressMap[ip.To4().String()] = addr
+		srv.keyAddressMap[k] = addr
 	}
 
-	if srv.vpnVCidr != "" {
-		if srv.keyParser.CompareKeyWithCIDR(key, srv.vpnVCidr) {
-			srv.vpnVipAddress = &addr
+	if srv.vpnCIDR != "" {
+		if srv.keyParser.CompareKeyWithCIDR(key, srv.vpnCIDR) {
+			srv.vpnVipAddress = addr
 		}
+	}
+
+	if len(lanIPs) == 0 {
+		return
 	}
 
 	for otherAddr, info := range srv.clientMap {
-		if otherAddr == addr.String() {
+		if otherAddr == addr {
 			continue
 		}
 
-		if len(lanIPs) == 0 {
-			continue
-		}
-
-		srv.logger.Debugf("setupClient set lanIPs to %s [%s]", info.Addr.String(), info.Key)
-		addrTo := info.Addr
-		srv.writeChannel <- &pkg.UDPPackage{
-			Package: proto.BuildForwardControlData(nil, lanIPs),
-			Addr:    &addrTo,
+		srv.logger.Debugf("setupClient set lanIPs to %s [%s]", info.Addr, info.Key)
+		srv.writeChannel <- &inter.ServerData{
+			Data: proto.BuildForwardControlData(nil, lanIPs),
+			Addr: info.Addr,
 		}
 	}
 }
 
-func (srv *ChannelServer) processPingMessage(log logger.Wrapper, udpPackage *pkg.UDPPackage, d []byte) {
-	log.Debugf("receive ping message from %v", udpPackage.Addr.String())
-	srv.writeChannel <- &pkg.UDPPackage{
-		Package: proto.BuildPongMethodData(d),
-		Addr:    udpPackage.Addr,
+func (srv *ChannelServer) processPingMessage(log logger.Wrapper, addr string, d []byte) {
+	log.Debugf("receive ping message from %v", addr)
+	srv.writeChannel <- &inter.ServerData{
+		Data: proto.BuildPongMethodData(d),
+		Addr: addr,
 	}
 }
 
-func (srv *ChannelServer) processPongMessage(log logger.Wrapper, udpPackage *pkg.UDPPackage, _ []byte) {
-	log.Debugf("receive pong message from %v", udpPackage.Addr.String())
-	srv.livePool.OnPongResponse(srv.UDPConnectionLive(*udpPackage.Addr))
+func (srv *ChannelServer) processPongMessage(log logger.Wrapper, addr string, _ []byte) {
+	log.Debugf("receive pong message from %v", addr)
+	srv.livePool.OnPongResponse(srv.UDPConnectionLive(addr))
 }
 
-func (srv *ChannelServer) processKeyResponseMessage(log logger.Wrapper, udpPackage *pkg.UDPPackage, d []byte) {
+func (srv *ChannelServer) processKeyResponseMessage(log logger.Wrapper, addr string, d []byte) {
 	key, vpnIPs, lanIPs, err := proto.ParseKeyResponsePayloadData(d)
 	if err != nil {
 		log.WithFields(logger.FieldError("error", err)).Error("parse payload failed")
@@ -240,15 +225,15 @@ func (srv *ChannelServer) processKeyResponseMessage(log logger.Wrapper, udpPacka
 		return
 	}
 
-	log.Debugf("receive key response message [%v] from %v", key, udpPackage.Addr.String())
+	log.Debugf("receive key response message [%v] from %v", key, addr)
 	log.Info("--- vpnIPs", vpnIPs)
 	log.Info("--- lanIPs", lanIPs)
 
 	srv.cleanupClient(key)
 
-	delete(srv.pendingKeyMap, udpPackage.Addr.String())
+	delete(srv.pendingKeyMap, addr)
 
-	srv.setupClient(key, *udpPackage.Addr, vpnIPs, lanIPs)
+	srv.setupClient(key, addr, vpnIPs, lanIPs)
 }
 
 func (srv *ChannelServer) processDataMessage(log logger.Wrapper, d []byte) {
@@ -260,55 +245,58 @@ func (srv *ChannelServer) processDataMessage(log logger.Wrapper, d []byte) {
 	}
 
 	if addr, ok := srv.keyAddressMap[key]; ok {
-		srv.writeChannel <- &pkg.UDPPackage{
-			Package: proto.BuildData(data),
-			Addr:    &addr,
+		srv.writeChannel <- &inter.ServerData{
+			Data: proto.BuildData(data),
+			Addr: addr,
 		}
-	} else if srv.vpnVipAddress != nil {
-		srv.writeChannel <- &pkg.UDPPackage{
-			Package: proto.BuildData(data),
-			Addr:    srv.vpnVipAddress,
+	} else if srv.vpnVipAddress != "" {
+		srv.writeChannel <- &inter.ServerData{
+			Data: proto.BuildData(data),
+			Addr: srv.vpnVipAddress,
 		}
 	} else {
 		log.Errorf("no key %v for data", key)
 	}
 }
 
-func (srv *ChannelServer) processUDPServerInput(log logger.Wrapper, udpPackage *pkg.UDPPackage) {
-	m, d, e := proto.Decode(udpPackage.Package)
+// nolint: cyclop
+func (srv *ChannelServer) processServerInput(log logger.Wrapper, data *inter.ServerData) {
+	m, d, e := proto.Decode(data.Data)
 	if e != nil {
 		log.Errorf("decode data failed: %v", e)
 
 		return
 	}
 
-	log.Debugf("receive udp package [len:%v] from %v", len(udpPackage.Package), udpPackage.Addr.String())
+	log.Debugf("receive udp package [len:%v] from %v", len(data.Data), data.Addr)
 
-	_, isPending := srv.pendingKeyMap[udpPackage.Addr.String()]
-	_, isChannel := srv.clientMap[udpPackage.Addr.String()]
+	_, isPending := srv.pendingKeyMap[data.Addr]
+	_, isChannel := srv.clientMap[data.Addr]
 
 	if !isPending && !isChannel {
-		srv.livePool.Add(srv.UDPConnectionLive(*udpPackage.Addr))
-		srv.pendingKeyMap[udpPackage.Addr.String()] = true
+		srv.livePool.Add(srv.UDPConnectionLive(data.Addr))
+		srv.pendingKeyMap[data.Addr] = true
 
-		log.Debugf("%v put live pool", udpPackage.Addr.String())
+		log.Debugf("%v put live pool", data.Addr)
 	}
 
 	switch m {
 	case proto.MethodPing:
-		srv.processPingMessage(log, udpPackage, d)
+		srv.processPingMessage(log, data.Addr, d)
 	case proto.MethodPong:
-		srv.processPongMessage(log, udpPackage, d)
-		if ci, ok := srv.clientMap[udpPackage.Addr.String()]; ok {
+		srv.processPongMessage(log, data.Addr, d)
+
+		if ci, ok := srv.clientMap[data.Addr]; ok {
 			ci.LastAccessTime = time.Now()
 		}
 	case proto.MethodKeyRequest:
-		log.Debugf("receive key request message from %v", udpPackage.Addr.String())
+		log.Debugf("receive key request message from %v", data.Addr)
 	case proto.MethodKeyResponse:
-		srv.processKeyResponseMessage(log, udpPackage, d)
+		srv.processKeyResponseMessage(log, data.Addr, d)
 	case proto.MethodData:
 		srv.processDataMessage(log, d)
-		if ci, ok := srv.clientMap[udpPackage.Addr.String()]; ok {
+
+		if ci, ok := srv.clientMap[data.Addr]; ok {
 			ci.TransBytes += uint64(len(d))
 		}
 	}
@@ -329,33 +317,35 @@ func (srv *ChannelServer) reader() {
 		select {
 		case <-srv.ctx.Done():
 			quit = true
-		case udpPackage := <-srv.udpSrv.ChRead:
-			srv.processUDPServerInput(log, udpPackage)
+
+			continue
+		case d := <-srv.server.ReadCh():
+			srv.processServerInput(log, d)
 		case addr := <-srv.pingChannel:
-			if _, ok := srv.pendingKeyMap[addr.String()]; ok {
-				log.Debugf("ping: try request key %v", addr.String())
-				srv.writeChannel <- &pkg.UDPPackage{
-					Package: proto.BuildKeyRequestData(),
-					Addr:    &addr,
+			if _, ok := srv.pendingKeyMap[addr]; ok {
+				log.Debugf("ping: try request key %v", addr)
+				srv.writeChannel <- &inter.ServerData{
+					Data: proto.BuildKeyRequestData(),
+					Addr: addr,
 				}
 			} else {
-				log.Debugf("ping: try ping %v", addr.String())
-				srv.writeChannel <- &pkg.UDPPackage{
-					Package: proto.BuildPingMethodData(nil),
-					Addr:    &addr,
+				log.Debugf("ping: try ping %v", addr)
+				srv.writeChannel <- &inter.ServerData{
+					Data: proto.BuildPingMethodData(nil),
+					Addr: addr,
 				}
 			}
 		case addr := <-srv.removeChannel:
-			log.Debugf("remove on %v", addr.String())
+			log.Debugf("remove on %v", addr)
 
-			if cli, ok := srv.clientMap[addr.String()]; ok {
+			if cli, ok := srv.clientMap[addr]; ok {
 				srv.cleanupClient(cli.Key)
 			}
 		case gci := <-srv.getClientsInfosChannel:
 			for _, info := range srv.clientMap {
 				gci.ci = append(gci.ci, &ClientInfos{
 					VIP:            info.Key,
-					Address:        info.Addr.String(),
+					Address:        info.Addr,
 					VpnIPs:         info.VpnIPs,
 					LanIPs:         info.LanIPs,
 					CreateTime:     info.CreateTime,
@@ -385,12 +375,12 @@ func (srv *ChannelServer) writer() {
 		case <-srv.ctx.Done():
 			quit = true
 		case d := <-srv.writeChannel:
-			srv.udpSrv.ChWrite <- d
+			srv.server.WriteCh() <- d
 		}
 	}
 }
 
-func (srv *ChannelServer) UDPConnectionLive(addr net.UDPAddr) *UDPConnectionLive {
+func (srv *ChannelServer) UDPConnectionLive(addr string) *UDPConnectionLive {
 	liveItem := &UDPConnectionLive{
 		addr: addr,
 	}
@@ -404,25 +394,25 @@ func (srv *ChannelServer) UDPConnectionLive(addr net.UDPAddr) *UDPConnectionLive
 	return liveItem
 }
 
-func (srv *ChannelServer) StopAndWait() {
-	srv.ctxCancel()
-	srv.udpSrv.StopAndWait()
+func (srv *ChannelServer) Wait() {
 	srv.wg.Wait()
+	srv.server.CloseAndWait()
 }
 
-func (srv *ChannelServer) Wait() {
-	srv.udpSrv.Wait()
+func (srv *ChannelServer) StopAndWait() {
+	srv.ctxCancel()
+	srv.server.CloseAndWait()
 	srv.wg.Wait()
 }
 
 type UDPConnectionLive struct {
-	addr            net.UDPAddr
+	addr            string
 	fnDoPingRequest func()
 	fnOnRemoved     func()
 }
 
 func (live *UDPConnectionLive) Key() string {
-	return live.addr.String()
+	return live.addr
 }
 func (live *UDPConnectionLive) DoPingRequest() {
 	live.fnDoPingRequest()

@@ -8,7 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jiuzhou-zhao/udp-channel/pkg"
+	"github.com/jiuzhou-zhao/data-channel/dataprocessor"
+	"github.com/jiuzhou-zhao/data-channel/inter"
+	"github.com/jiuzhou-zhao/data-channel/tcp"
+	"github.com/jiuzhou-zhao/data-channel/wrapper"
 	"github.com/sgostarter/i/logger"
 	"github.com/stretchr/testify/assert"
 )
@@ -29,14 +32,47 @@ func (parser *TestLocalKeyParser) CompareKeyWithCIDR(key string, cidr string) bo
 }
 
 func TestChannel(t *testing.T) {
+	rLog := logger.NewCommLogger(&logger.FmtRecorder{})
+	log := logger.NewWrapper(rLog).WithFields(logger.FieldString("role", "udpServer"))
+
 	serverAddr := "127.0.0.1:9877"
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	rLog := logger.NewCommLogger(&logger.FmtRecorder{})
-	log := logger.NewWrapper(rLog).WithFields(logger.FieldString("role", "udpServer"))
+	sdps := []inter.ServerDataProcessor{
+		dataprocessor.NewServerEncryptDataProcess([]byte{0x01}),
+	}
+	cdps := []inter.ClientDataProcessor{
+		dataprocessor.NewClientEncryptDataProcess([]byte{0x01}),
+	}
 
+	/*
+		s, err := udp.NewServer(ctx, serverAddr, nil, log)
+		assert.Nil(t, err)
+
+		c, err := udp.NewClient(ctx, serverAddr, nil, log)
+		assert.Nil(t, err)
+
+	*/
+
+	//*
+	sdps = append([]inter.ServerDataProcessor{dataprocessor.NewServerTCPBag()}, sdps...)
+	cdps = append([]inter.ClientDataProcessor{dataprocessor.NewClientTCPBag()}, cdps...)
+
+	s, err := tcp.NewServer(ctx, serverAddr, nil, log)
+	assert.Nil(t, err)
+
+	c, err := tcp.NewClient(ctx, serverAddr, nil, log)
+	assert.Nil(t, err)
+	//*/
+
+	sw := wrapper.NewServer(s, sdps...)
+	sc := wrapper.NewClient(c, cdps...)
+	testChannelEx(ctx, t, sw, sc, log)
+}
+
+func testChannelEx(ctx context.Context, t *testing.T, s inter.Server, c inter.Client, log logger.Wrapper) {
 	var wg sync.WaitGroup
 
 	wg.Add(1)
@@ -47,7 +83,7 @@ func TestChannel(t *testing.T) {
 			log.Info("ut exit server routine")
 		}()
 
-		svr, err := NewChannelServer(ctx, serverAddr, log, &TestLocalKeyParser{}, pkg.NewAESEnDecrypt("12"), "")
+		svr, err := NewChannelServer(ctx, log, &TestLocalKeyParser{}, s, "")
 		assert.Nil(t, err)
 		svr.Wait()
 	}()
@@ -61,9 +97,8 @@ func TestChannel(t *testing.T) {
 		}()
 
 		d := &ChannelClientData{
-			ServerAddr: serverAddr,
-			Key:        "129.1.1.10",
-			Crypt:      pkg.NewAESEnDecrypt("12"),
+			Key:               "129.1.1.10",
+			ClientDataChannel: c,
 		}
 		cli, err := NewChannelClient(ctx, d)
 		assert.Nil(t, err)
