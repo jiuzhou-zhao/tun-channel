@@ -180,6 +180,11 @@ func (cli *ChannelClient) ReadIncomingMsgChan() <-chan *IncomingMsg {
 	return cli.incomingMsgChan
 }
 
+func (cli *ChannelClient) Wait() {
+	cli.client.Wait()
+	cli.wg.Wait()
+}
+
 func (cli *ChannelClient) StopAndWait() {
 	cli.ctxCancel()
 	cli.client.CloseAndWait()
