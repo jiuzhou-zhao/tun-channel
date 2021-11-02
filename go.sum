@@ -1,7 +1,7 @@
 github.com/davecgh/go-spew v1.1.0 h1:ZDRjVQ15GmhC3fiQ8ni8+OwkZQO4DARzQgrnXU1Liz8=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/jiuzhou-zhao/data-channel v0.0.0-20211102010103-5df9c0775430 h1:K6UILWbjXu/EReRLX/bUvzgekOWBYHBw9dLep146+s4=
-github.com/jiuzhou-zhao/data-channel v0.0.0-20211102010103-5df9c0775430/go.mod h1:hkZBewlnYHk1nU6UT0y7gZwZiG7+aQJ8p47CWLzXMJ8=
+github.com/jiuzhou-zhao/data-channel v0.0.0-20211102012328-551b9c2c3f4f h1:vLh+czLqvoroBs8WmXSCoNJqYjlon1ZWZ5viVX+5nLQ=
+github.com/jiuzhou-zhao/data-channel v0.0.0-20211102012328-551b9c2c3f4f/go.mod h1:hkZBewlnYHk1nU6UT0y7gZwZiG7+aQJ8p47CWLzXMJ8=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/sgostarter/i v0.0.3 h1:RAwlZR79mP8P/8vWNxKSm9oqeOHg/f0Nttvy4XhUETQ=
