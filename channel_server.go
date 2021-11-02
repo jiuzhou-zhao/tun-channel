@@ -277,6 +277,11 @@ func (srv *ChannelServer) processServerInput(log logger.Wrapper, data *inter.Ser
 		srv.livePool.Add(srv.UDPConnectionLive(data.Addr))
 		srv.pendingKeyMap[data.Addr] = true
 
+		srv.writeChannel <- &inter.ServerData{
+			Data: proto.BuildKeyRequestData(),
+			Addr: data.Addr,
+		}
+
 		log.Debugf("%v put live pool", data.Addr)
 	}
 
