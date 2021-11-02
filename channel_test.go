@@ -67,8 +67,8 @@ func TestChannel(t *testing.T) {
 	assert.Nil(t, err)
 	//*/
 
-	sw := wrapper.NewServer(s, sdps...)
-	sc := wrapper.NewClient(c, cdps...)
+	sw := wrapper.NewServer(s, log, sdps...)
+	sc := wrapper.NewClient(c, log, cdps...)
 	testChannelEx(ctx, t, sw, sc, log)
 }
 
