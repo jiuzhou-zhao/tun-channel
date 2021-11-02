@@ -98,6 +98,8 @@ func NewChannelServer(ctx context.Context, log logger.Wrapper, keyParser KeyPars
 	}
 	chnServer.ctx, chnServer.ctxCancel = context.WithCancel(ctx)
 
+	server.SetOb(chnServer)
+
 	chnServer.wg.Add(1)
 
 	go chnServer.reader()
@@ -107,6 +109,23 @@ func NewChannelServer(ctx context.Context, log logger.Wrapper, keyParser KeyPars
 	go chnServer.writer()
 
 	return chnServer, nil
+}
+
+func (srv *ChannelServer) OnConnect(addr string) {
+	srv.logger.Info("OnConnect %s", addr)
+
+	srv.writeChannel <- &inter.ServerData{
+		Data: proto.BuildKeyRequestData(),
+		Addr: addr,
+	}
+}
+
+func (srv *ChannelServer) OnClose(addr string) {
+	srv.logger.Info("OnClose %s", addr)
+}
+
+func (srv *ChannelServer) OnException(addr string, err error) {
+	srv.logger.Errorf("OnException %s: %s", addr, err)
 }
 
 func (srv *ChannelServer) GetClientInfos() []*ClientInfos {
@@ -276,11 +295,6 @@ func (srv *ChannelServer) processServerInput(log logger.Wrapper, data *inter.Ser
 	if !isPending && !isChannel {
 		srv.livePool.Add(srv.UDPConnectionLive(data.Addr))
 		srv.pendingKeyMap[data.Addr] = true
-
-		srv.writeChannel <- &inter.ServerData{
-			Data: proto.BuildKeyRequestData(),
-			Addr: data.Addr,
-		}
 
 		log.Debugf("%v put live pool", data.Addr)
 	}
