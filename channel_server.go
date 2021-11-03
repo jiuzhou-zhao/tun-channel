@@ -112,7 +112,7 @@ func NewChannelServer(ctx context.Context, log logger.Wrapper, keyParser KeyPars
 }
 
 func (srv *ChannelServer) OnConnect(addr string) {
-	srv.logger.Info("OnConnect %s", addr)
+	srv.logger.Infof("OnConnect %s", addr)
 
 	srv.writeChannel <- &inter.ServerData{
 		Data: proto.BuildKeyRequestData(),
