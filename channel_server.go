@@ -8,7 +8,7 @@ import (
 	"github.com/jiuzhou-zhao/data-channel/inter"
 	"github.com/jiuzhou-zhao/udp-channel/internal/proto"
 	"github.com/jiuzhou-zhao/udp-channel/pkg"
-	"github.com/sgostarter/i/logger"
+	"github.com/sgostarter/i/l"
 )
 
 type KeyParser interface {
@@ -50,7 +50,7 @@ type ChannelServer struct {
 
 	wg sync.WaitGroup
 
-	logger        logger.Wrapper
+	logger        l.Wrapper
 	keyParser     KeyParser
 	vpnCIDR       string
 	vpnVipAddress string
@@ -67,11 +67,13 @@ type ChannelServer struct {
 	getClientsInfosChannel chan *GetClientsInfosRequest
 }
 
-func NewChannelServer(ctx context.Context, log logger.Wrapper, keyParser KeyParser,
+func NewChannelServer(ctx context.Context, log l.Wrapper, keyParser KeyParser,
 	server inter.Server, vpnIP string) (*ChannelServer, error) {
 	if log == nil {
-		log = logger.NewWrapper(logger.NewCommLogger(&logger.FmtRecorder{})).WithFields(logger.FieldString("role", "channelClient"))
+		log = l.NewNopLoggerWrapper()
 	}
+
+	log = log.WithFields(l.StringField(l.ClsKey, "server-channel"))
 
 	if vpnIP != "" {
 		vpnCIDR, err := ToCIDR(vpnIP)
@@ -223,7 +225,7 @@ func (srv *ChannelServer) setupClient(key string, addr string, vpnIPs, lanIPs []
 	}
 }
 
-func (srv *ChannelServer) processPingMessage(log logger.Wrapper, addr string, d []byte) {
+func (srv *ChannelServer) processPingMessage(log l.Wrapper, addr string, d []byte) {
 	log.Debugf("receive ping message from %v", addr)
 	srv.writeChannel <- &inter.ServerData{
 		Data: proto.BuildPongMethodData(d),
@@ -231,15 +233,15 @@ func (srv *ChannelServer) processPingMessage(log logger.Wrapper, addr string, d 
 	}
 }
 
-func (srv *ChannelServer) processPongMessage(log logger.Wrapper, addr string, _ []byte) {
+func (srv *ChannelServer) processPongMessage(log l.Wrapper, addr string, _ []byte) {
 	log.Debugf("receive pong message from %v", addr)
 	srv.livePool.OnPongResponse(srv.UDPConnectionLive(addr))
 }
 
-func (srv *ChannelServer) processKeyResponseMessage(log logger.Wrapper, addr string, d []byte) {
+func (srv *ChannelServer) processKeyResponseMessage(log l.Wrapper, addr string, d []byte) {
 	key, vpnIPs, lanIPs, err := proto.ParseKeyResponsePayloadData(d)
 	if err != nil {
-		log.WithFields(logger.FieldError("error", err)).Error("parse payload failed")
+		log.WithFields(l.ErrorField(err)).Error("parse payload failed")
 
 		return
 	}
@@ -255,7 +257,7 @@ func (srv *ChannelServer) processKeyResponseMessage(log logger.Wrapper, addr str
 	srv.setupClient(key, addr, vpnIPs, lanIPs)
 }
 
-func (srv *ChannelServer) processDataMessage(log logger.Wrapper, d []byte) {
+func (srv *ChannelServer) processDataMessage(log l.Wrapper, d []byte) {
 	key, data, err := srv.keyParser.ParseData(d)
 	if err != nil {
 		log.Errorf("key parser parse key failed: %v", err)
@@ -279,7 +281,7 @@ func (srv *ChannelServer) processDataMessage(log logger.Wrapper, d []byte) {
 }
 
 // nolint: cyclop
-func (srv *ChannelServer) processServerInput(log logger.Wrapper, data *inter.ServerData) {
+func (srv *ChannelServer) processServerInput(log l.Wrapper, data *inter.ServerData) {
 	m, d, e := proto.Decode(data.Data)
 	if e != nil {
 		log.Errorf("decode data failed: %v", e)
@@ -322,7 +324,7 @@ func (srv *ChannelServer) processServerInput(log logger.Wrapper, data *inter.Ser
 }
 
 func (srv *ChannelServer) reader() {
-	log := srv.logger.WithFields(logger.FieldString("module", "reader"))
+	log := srv.logger.WithFields(l.FieldString("module", "reader"))
 
 	log.Infof("enter channel server reader")
 
@@ -379,7 +381,7 @@ func (srv *ChannelServer) reader() {
 }
 
 func (srv *ChannelServer) writer() {
-	log := srv.logger.WithFields(logger.FieldString("module", "writer"))
+	log := srv.logger.WithFields(l.StringField(l.ClsModuleKey, "write_routine"))
 
 	log.Infof("enter channel server writer")
 

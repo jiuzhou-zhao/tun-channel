@@ -7,7 +7,7 @@ import (
 
 	"github.com/jiuzhou-zhao/data-channel/inter"
 	"github.com/jiuzhou-zhao/udp-channel/internal/proto"
-	"github.com/sgostarter/i/logger"
+	"github.com/sgostarter/i/l"
 )
 
 type IncomingMsg struct {
@@ -26,7 +26,7 @@ type ChannelClient struct {
 	key    string
 	vpnIPs []string
 	lanIPs []string
-	logger logger.Wrapper
+	logger l.Wrapper
 
 	client inter.Client
 
@@ -39,14 +39,16 @@ type ChannelClientData struct {
 	Key               string // VIP CIDR
 	VpnIPs            []string
 	LanIPs            []string
-	Log               logger.Wrapper
+	Log               l.Wrapper
 	ClientDataChannel inter.Client
 }
 
 func NewChannelClient(ctx context.Context, d *ChannelClientData) (*ChannelClient, error) {
 	if d.Log == nil {
-		d.Log = logger.NewWrapper(&logger.NopLogger{}).WithFields(logger.FieldString("role", "channelClient"))
+		d.Log = l.NewNopLoggerWrapper()
 	}
+
+	d.Log = d.Log.WithFields(l.StringField(l.ClsKey, "client-channel"))
 
 	vpnCidrs := make([]string, 0, len(d.VpnIPs))
 
@@ -95,7 +97,7 @@ func NewChannelClient(ctx context.Context, d *ChannelClientData) (*ChannelClient
 
 // nolint: cyclop
 func (cli *ChannelClient) reader() {
-	log := cli.logger.WithFields(logger.FieldString("module", "reader"))
+	log := cli.logger.WithFields(l.StringField(l.ClsModuleKey, "reader_routine"))
 
 	log.Infof("enter channel client reader")
 
@@ -148,7 +150,7 @@ func (cli *ChannelClient) reader() {
 }
 
 func (cli *ChannelClient) checker() {
-	log := cli.logger.WithFields(logger.FieldString("module", "checker"))
+	log := cli.logger.WithFields(l.StringField(l.ClsModuleKey, "checker_routine"))
 
 	log.Infof("enter channel client checker")
 

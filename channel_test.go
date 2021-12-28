@@ -12,7 +12,7 @@ import (
 	"github.com/jiuzhou-zhao/data-channel/inter"
 	"github.com/jiuzhou-zhao/data-channel/tcp"
 	"github.com/jiuzhou-zhao/data-channel/wrapper"
-	"github.com/sgostarter/i/logger"
+	"github.com/sgostarter/i/l"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -32,8 +32,8 @@ func (parser *TestLocalKeyParser) CompareKeyWithCIDR(key string, cidr string) bo
 }
 
 func TestChannel(t *testing.T) {
-	rLog := logger.NewCommLogger(&logger.FmtRecorder{})
-	log := logger.NewWrapper(rLog).WithFields(logger.FieldString("role", "udpServer"))
+	rLog := l.NewCommLogger(&l.FmtRecorder{})
+	log := l.NewWrapper(rLog).WithFields(l.FieldString("role", "udpServer"))
 
 	serverAddr := "127.0.0.1:9877"
 
@@ -72,7 +72,7 @@ func TestChannel(t *testing.T) {
 	testChannelEx(ctx, t, sw, sc, log)
 }
 
-func testChannelEx(ctx context.Context, t *testing.T, s inter.Server, c inter.Client, log logger.Wrapper) {
+func testChannelEx(ctx context.Context, t *testing.T, s inter.Server, c inter.Client, log l.Wrapper) {
 	var wg sync.WaitGroup
 
 	wg.Add(1)

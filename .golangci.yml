@@ -78,6 +78,7 @@ linters:
     - wrapcheck         # COMBAK: 从外部返回的错误是否被正确的包装
     - nilerr            # COMBAK: err 不是 nil，但是返回 nil
     - exhaustive        # COMBAK: 检查枚举的值是否都有用
+    - cyclop
   disable-all: false
   presets:
     - bugs
