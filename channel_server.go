@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/jiuzhou-zhao/data-channel/inter"
-	"github.com/jiuzhou-zhao/udp-channel/internal/proto"
-	"github.com/jiuzhou-zhao/udp-channel/pkg"
+	"github.com/jiuzhou-zhao/tun-channel/internal/proto"
+	"github.com/jiuzhou-zhao/tun-channel/pkg"
 	"github.com/sgostarter/i/l"
 )
 

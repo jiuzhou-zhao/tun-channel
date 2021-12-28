@@ -1,4 +1,4 @@
-## udp-channel
+## tun-channel
 
 * encrypt / decrypt
 * keepalive
