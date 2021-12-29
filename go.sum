@@ -1,7 +1,7 @@
 github.com/davecgh/go-spew v1.1.0 h1:ZDRjVQ15GmhC3fiQ8ni8+OwkZQO4DARzQgrnXU1Liz8=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/jiuzhou-zhao/data-channel v0.0.1 h1:qlkCyyonWht4NQXQiQ7MeHT8+U23dnnPgoIxBeMM5s8=
-github.com/jiuzhou-zhao/data-channel v0.0.1/go.mod h1:pF4RxEzA/jVNH1A6+QTz6mFfGIM1Doj9zrDNLWRB6nQ=
+github.com/jiuzhou-zhao/data-channel v0.0.2 h1:BIUTYxHLlYbs8V2VRpzCVwGK3Npt9XGGqZiREsoc9h8=
+github.com/jiuzhou-zhao/data-channel v0.0.2/go.mod h1:pF4RxEzA/jVNH1A6+QTz6mFfGIM1Doj9zrDNLWRB6nQ=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/sgostarter/i v0.1.1 h1:Cma7s82AIWMD1v4H98grNJuoLqUSp7eLQREfk+Rl2+o=

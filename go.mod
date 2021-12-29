@@ -3,7 +3,7 @@ module github.com/jiuzhou-zhao/tun-channel
 go 1.17
 
 require (
-	github.com/jiuzhou-zhao/data-channel v0.0.1
+	github.com/jiuzhou-zhao/data-channel v0.0.2
 	github.com/sgostarter/i v0.1.1
 	github.com/stretchr/testify v1.7.0
 )
