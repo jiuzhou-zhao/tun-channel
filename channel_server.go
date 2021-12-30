@@ -1,4 +1,4 @@
-package udpchannel
+package tunchannel
 
 import (
 	"context"
