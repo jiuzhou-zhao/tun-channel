@@ -11,6 +11,10 @@ import (
 	"github.com/sgostarter/i/l"
 )
 
+const (
+	serverBufferCount = 1000
+)
+
 type KeyParser interface {
 	ParseData(d []byte) (key string, dd []byte, err error)
 	ParseKeyFromIPOrCIDR(s string) (key string, err error)
@@ -69,6 +73,11 @@ type ChannelServer struct {
 
 func NewChannelServer(ctx context.Context, log l.Wrapper, keyParser KeyParser,
 	server inter.Server, vpnIP string) (*ChannelServer, error) {
+	return NewChannelServerEx(ctx, log, keyParser, server, vpnIP, serverBufferCount)
+}
+
+func NewChannelServerEx(ctx context.Context, log l.Wrapper, keyParser KeyParser,
+	server inter.Server, vpnIP string, channelBufferSize int) (*ChannelServer, error) {
 	if log == nil {
 		log = l.NewNopLoggerWrapper()
 	}
@@ -84,6 +93,10 @@ func NewChannelServer(ctx context.Context, log l.Wrapper, keyParser KeyParser,
 		vpnIP = vpnCIDR
 	}
 
+	if channelBufferSize <= 0 {
+		channelBufferSize = serverBufferCount
+	}
+
 	chnServer := &ChannelServer{
 		logger:                 log,
 		keyParser:              keyParser,
@@ -93,9 +106,9 @@ func NewChannelServer(ctx context.Context, log l.Wrapper, keyParser KeyParser,
 		pendingKeyMap:          make(map[string]interface{}),
 		clientMap:              make(map[string]*ChannelClientDataInfo),
 		keyAddressMap:          make(map[string]string),
-		pingChannel:            make(chan string, 10),
-		writeChannel:           make(chan *inter.ServerData, 10),
-		removeChannel:          make(chan string, 10),
+		pingChannel:            make(chan string, channelBufferSize),
+		writeChannel:           make(chan *inter.ServerData, channelBufferSize),
+		removeChannel:          make(chan string, channelBufferSize),
 		getClientsInfosChannel: make(chan *GetClientsInfosRequest, 10),
 	}
 	chnServer.ctx, chnServer.ctxCancel = context.WithCancel(ctx)
