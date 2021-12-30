@@ -93,9 +93,9 @@ func NewChannelServer(ctx context.Context, log l.Wrapper, keyParser KeyParser,
 		pendingKeyMap:          make(map[string]interface{}),
 		clientMap:              make(map[string]*ChannelClientDataInfo),
 		keyAddressMap:          make(map[string]string),
-		pingChannel:            make(chan string, 1000),
-		writeChannel:           make(chan *inter.ServerData, 1000),
-		removeChannel:          make(chan string, 1000),
+		pingChannel:            make(chan string, 10),
+		writeChannel:           make(chan *inter.ServerData, 10),
+		removeChannel:          make(chan string, 10),
 		getClientsInfosChannel: make(chan *GetClientsInfosRequest, 10),
 	}
 	chnServer.ctx, chnServer.ctxCancel = context.WithCancel(ctx)
